@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { isAllowedSession } from '@/lib/access-control.mjs';
+import { isAllowedSession, isLocalPreview } from '@/lib/access-control.mjs';
 import { getLocaleFromPathname } from './lib/locales';
 
 function addSecurityHeaders(response) {
@@ -21,7 +21,12 @@ function isPublicPath(pathname) {
 
 export default auth((request) => {
   const { pathname } = request.nextUrl;
-  const isOwner = isAllowedSession(request.auth);
+  const previewEnabled = isLocalPreview({
+    enabled: process.env.LOCAL_PREVIEW,
+    nodeEnv: process.env.NODE_ENV,
+    hostname: request.nextUrl.hostname,
+  });
+  const isOwner = previewEnabled || isAllowedSession(request.auth);
 
   if (!isPublicPath(pathname) && !isOwner) {
     if (pathname.startsWith('/api/')) {

@@ -994,7 +994,7 @@ export default function StandaloneShell({ locale = 'en' }) {
           )}
         </div>
         <div className={activeTab === 'apps' ? "h-full w-full" : "hidden"}>
-          <AppsStudio apiKey={apiKey} locale={locale} />
+          {activeTab === 'apps' && <AppsStudio apiKey={apiKey} locale={locale} />}
         </div>
         <div className={activeTab === 'ai-influencer' ? "h-full w-full" : "hidden"}>
           <AiInfluencerStudio
