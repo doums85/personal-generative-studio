@@ -1,5 +1,6 @@
 {
   "tabs": {
+    "library": "创意素材库",
     "image": "图像工作室",
     "layers": "图层工作室",
     "video": "视频工作室",
@@ -14,10 +15,10 @@
     "workflows": "工作流",
     "agents": "智能体",
     "design-agent": "设计智能体",
-    "apps": "探索应用",
     "ai-influencer": "AI 网红工作室"
   },
   "categories": {
+    "foundations": "基础元素",
     "images": "图像",
     "video": "视频",
     "audio": "音频",

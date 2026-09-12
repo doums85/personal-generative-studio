@@ -27,3 +27,11 @@ test('economy and quality policies make deterministic choices', () => {
   assert.equal(selectModel(catalog, { modality: 'image', mode: 'economy' }).id, 'lab/image-fast');
   assert.equal(selectModel(catalog, { modality: 'image', mode: 'quality' }).id, 'lab/image-pro');
 });
+
+test('economy mode compares equivalent image units and does not guess token-based totals', () => {
+  const mixedPricing = normalizeGatewayCatalog({ data: [
+    { id: 'lab/per-image', name: 'Per Image', type: 'image', pricing: { image: '0.01' } },
+    { id: 'lab/per-token', name: 'Per Token', type: 'image', pricing: { input: '0.000001', output: '0.000002' } },
+  ] });
+  assert.equal(selectModel(mixedPricing, { modality: 'image', mode: 'economy' }).id, 'lab/per-image');
+});

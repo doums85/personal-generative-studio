@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
+import { listCreativeElements, subscribeToCreativeLibrary } from '@/lib/creative-library';
+import { getModelPriceSummary } from '@/lib/gateway/pricing.mjs';
 
 const LABELS = {
   image: { title: 'Image Studio', action: 'Générer l’image', placeholder: 'Décrivez précisément l’image à créer…' },
@@ -18,6 +21,8 @@ export default function GatewayStudio({ modality }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [elements, setElements] = useState([]);
+  const [selectedElementIds, setSelectedElementIds] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -32,7 +37,24 @@ export default function GatewayStudio({ modality }) {
     return () => { active = false; };
   }, [modality]);
 
+  useEffect(() => {
+    const refresh = () => listCreativeElements().then(setElements).catch(() => setElements([]));
+    refresh();
+    return subscribeToCreativeLibrary(refresh);
+  }, []);
+
   const selected = useMemo(() => catalog.find((item) => item.id === model), [catalog, model]);
+  const selectedElements = useMemo(
+    () => elements.filter((item) => selectedElementIds.includes(item.id)),
+    [elements, selectedElementIds],
+  );
+
+  function toggleElement(id) {
+    setSelectedElementIds((current) => {
+      if (current.includes(id)) return current.filter((item) => item !== id);
+      return [...current, id].slice(-3);
+    });
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -40,10 +62,14 @@ export default function GatewayStudio({ modality }) {
     setError('');
     setResult(null);
     try {
+      const continuity = selectedElements.length
+        ? `\n\nÉléments de continuité à respecter strictement :\n${selectedElements.map((item) => `- ${item.name} (${item.type}) : ${item.description}`).join('\n')}`
+        : '';
+      const referenceImages = selectedElements.map((item) => item.referenceDataUrl).filter(Boolean);
       const response = await fetch('/api/gateway/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modality, prompt, model: model || undefined, mode }),
+        body: JSON.stringify({ modality, prompt: `${prompt}${continuity}`, referenceImages, model: model || undefined, mode }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'La génération a échoué.');
@@ -83,10 +109,40 @@ export default function GatewayStudio({ modality }) {
           <label className="mt-4 block text-xs font-semibold text-white/60">Modèle {mode === 'manual' ? '(obligatoire)' : '(facultatif)'}</label>
           <select value={model} onChange={(event) => setModel(event.target.value)} required={mode === 'manual'} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111114] p-3 text-sm">
             <option value="">Sélection automatique</option>
-            {catalog.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {catalog.map((item) => <option key={item.id} value={item.id}>{item.name} — {getModelPriceSummary(item)}</option>)}
           </select>
 
-          {selected && <p className="mt-2 text-xs text-white/35">{selected.id}</p>}
+          {selected && (
+            <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+              <span className="truncate text-white/35">{selected.id}</span>
+              <span className="shrink-0 text-cyan-200/70">{getModelPriceSummary(selected)}</span>
+            </div>
+          )}
+
+          {modality !== 'audio' && (
+            <div className="mt-5">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold text-white/60">Éléments de la bibliothèque</label>
+                <Link href="/studio/library" className="text-xs text-cyan-300/70 hover:text-cyan-200">Gérer</Link>
+              </div>
+              {elements.length === 0 ? (
+                <p className="mt-2 rounded-xl border border-dashed border-white/10 p-3 text-xs text-white/30">Créez un personnage ou un lieu dans la Bibliothèque.</p>
+              ) : (
+                <div className="mt-2 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+                  {elements.map((element) => {
+                    const isActive = selectedElementIds.includes(element.id);
+                    return (
+                      <button key={element.id} type="button" onClick={() => toggleElement(element.id)} className={`flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-xs transition ${isActive ? 'border-cyan-300/50 bg-cyan-300/12 text-cyan-100' : 'border-white/10 bg-white/[0.03] text-white/45 hover:text-white/75'}`}>
+                        {element.referenceDataUrl ? <Image src={element.referenceDataUrl} alt="" width={24} height={24} unoptimized className="h-6 w-6 rounded-full object-cover" /> : <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5">✦</span>}
+                        {element.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedElements.length > 0 && <p className="mt-2 text-[11px] text-white/30">{selectedElements.length}/3 référence{selectedElements.length > 1 ? 's' : ''} ajoutée{selectedElements.length > 1 ? 's' : ''} à la génération.</p>}
+            </div>
+          )}
           {error && <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-100">{error}</p>}
 
           <button disabled={loading || !prompt.trim()} className="mt-6 w-full rounded-xl bg-cyan-300 px-4 py-3 font-semibold text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40">

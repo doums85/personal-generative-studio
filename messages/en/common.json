@@ -1,5 +1,6 @@
 {
   "tabs": {
+    "library": "Creative Library",
     "image": "Image Studio",
     "layers": "Layers Studio",
     "video": "Video Studio",
@@ -14,10 +15,10 @@
     "workflows": "Workflows",
     "agents": "Agents",
     "design-agent": "Design Agent",
-    "apps": "Explore Apps",
     "ai-influencer": "AI Influencer Studio"
   },
   "categories": {
+    "foundations": "Foundations",
     "images": "Images",
     "video": "Video",
     "audio": "Audio",

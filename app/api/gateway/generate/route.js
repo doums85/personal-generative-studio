@@ -22,6 +22,7 @@ const requestSchema = z.object({
   duration: z.number().int().min(1).max(30).optional(),
   seed: z.number().int().optional(),
   voice: z.string().trim().max(80).default('alloy'),
+  referenceImages: z.array(z.string().startsWith('data:image/').max(2_000_000)).max(3).default([]),
 });
 
 async function getCatalog() {
@@ -63,7 +64,7 @@ export async function POST(request) {
     if (input.modality === 'image') {
       const result = await generateImage({
         model: chosen.id,
-        prompt: input.prompt,
+        prompt: input.referenceImages.length ? { text: input.prompt, images: input.referenceImages } : input.prompt,
         aspectRatio: input.aspectRatio,
         seed: input.seed,
         providerOptions: { gateway: { tags: ['app:personal-studio', 'modality:image'] } },
@@ -74,7 +75,7 @@ export async function POST(request) {
     if (input.modality === 'video') {
       const result = await generateVideo({
         model: chosen.id,
-        prompt: input.prompt,
+        prompt: input.referenceImages[0] ? { text: input.prompt, image: input.referenceImages[0] } : input.prompt,
         aspectRatio: input.aspectRatio,
         resolution: input.resolution,
         duration: input.duration,

@@ -246,3 +246,12 @@ No existing secret or generated build artifact from the upstream repository will
 - A failed or unavailable optional studio must not prevent the rest of the application from loading.
 - The initial implementation favors a deep, reliable personal tool over public SaaS abstractions.
 
+## Approved Addendum — Creative Foundations Library
+
+The personal studio includes a dedicated library for reusable creative foundations. An element has a stable name, a type (character, place, object, product, or visual style), a continuity description, and an optional visual reference. The owner can import a reference image or generate one through AI Gateway.
+
+The first implementation stores these private elements in IndexedDB on the current device, avoiding a paid database dependency and allowing larger references than browser key-value storage. References are resized before storage and may be selected in Image Studio or Video Studio. Selected descriptions are appended to the generation instructions; compatible Gateway models also receive the reference images directly. Up to three references are sent per generation to stay within practical request-size limits.
+
+The old Explore Apps entry and view are removed. Requests to its former route open the Creative Library instead.
+
+Model selectors display live Gateway pricing with explicit units. Flat image prices are shown per image, video duration prices per second, speech prices per million characters, and token-based image pricing per million input/output tokens. Missing provider metadata is labeled as unavailable rather than guessed.

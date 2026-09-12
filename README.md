@@ -11,6 +11,8 @@ This repository is a personal fork of [Open Generative AI](https://github.com/an
 - Dynamic image, video, speech, transcription, and language model discovery.
 - Manual, Economy, Balanced, and Maximum Quality routing foundations.
 - Gateway-native Image, Video, and Audio studio surfaces.
+- A private creative library for reusable characters, places, objects, products, and visual styles, with imported or AI-generated references.
+- Live, unit-aware Gateway prices in model selectors.
 - The complete upstream studio shell remains available for phased migration of advanced tools.
 - Security headers, protected API routes, unit tests, linting, and a verified production build.
 
@@ -56,7 +58,7 @@ The default automated tests never make paid model calls.
 
 Deploy the Next.js application to Vercel, configure the environment variables above, and enable AI Gateway for the linked project. Long video generations use a five-minute function duration and therefore require a compatible Vercel plan and model.
 
-Private Blob storage and a Marketplace Postgres database are planned for persistent media history and job orchestration. Until those are connected, Gateway-native outputs are returned directly to the authenticated browser and are not persisted by the new layer.
+Creative-library references are currently stored in IndexedDB on the device that created them, with automatic resizing to keep generation requests compact. Private Blob storage and a Marketplace Postgres database remain the future option for cross-device synchronization, persistent media history, and job orchestration. Until those are connected, Gateway-native outputs are returned directly to the authenticated browser and are not persisted by the new layer.
 
 ## Migration status
 

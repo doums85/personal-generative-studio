@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { ImageStudio, VideoStudio, ClippingStudio, MotionControlStudio, VibeMotionStudio, LipSyncStudio, RecastStudio, CinemaStudio, AudioStudio, MarketingStudio, WorkflowStudio, AgentStudio, AppsStudio, AiInfluencerStudio, LayersStudio, getUserBalance } from 'studio';
+import { ImageStudio, VideoStudio, ClippingStudio, MotionControlStudio, VibeMotionStudio, LipSyncStudio, RecastStudio, CinemaStudio, AudioStudio, MarketingStudio, WorkflowStudio, AgentStudio, AiInfluencerStudio, LayersStudio, getUserBalance } from 'studio';
 
 const DesignAgentStudio = dynamic(() => import('studio').then(mod => mod.DesignAgentStudio), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-black flex items-center justify-center text-white/20">Loading Design Studio...</div>
 });
 import GatewayStudio from './GatewayStudio';
+import CreativeLibrary from './CreativeLibrary';
 import { getCommonCopy, getLocaleConfig, localizeStudioPath } from '@/lib/locales';
 
 // Tab/category ids, icons, and English `label` fallbacks are stable
@@ -18,6 +19,17 @@ import { getCommonCopy, getLocaleConfig, localizeStudioPath } from '@/lib/locale
 // inside the component below, with these English strings as the fallback
 // when a locale bundle is missing the key.
 const TABS = [
+  {
+    id: 'library',
+    label: 'Bibliothèque',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        <path d="M9 7h6M9 11h6"/>
+      </svg>
+    )
+  },
   {
     id: 'image',
     label: 'Image Studio',
@@ -184,18 +196,6 @@ const TABS = [
     )
   },
   {
-    id: 'apps',
-    label: 'Explore Apps',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="7"/>
-        <rect x="14" y="3" width="7" height="7"/>
-        <rect x="14" y="14" width="7" height="7"/>
-        <rect x="3" y="14" width="7" height="7"/>
-      </svg>
-    )
-  },
-  {
     id: 'ai-influencer',
     label: 'AI Influencer Studio',
     icon: (
@@ -207,6 +207,18 @@ const TABS = [
 ];
 
 const NAVIGATION_CATEGORIES = [
+  {
+    id: 'foundations',
+    label: 'Éléments de base',
+    tabIds: ['library'],
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="8" cy="8" r="3"/>
+        <path d="M3 20a5 5 0 0 1 10 0"/>
+        <path d="M15 5h6v6h-6zM16 20h5v-5h-5z"/>
+      </svg>
+    )
+  },
   {
     id: 'images',
     label: 'Images',
@@ -259,8 +271,6 @@ const NAVIGATION_CATEGORIES = [
   }
 ];
 
-const EXPLORE_APPS_TAB = TABS.find((tab) => tab.id === 'apps');
-
 const getNavigationCategory = (tabId) => (
   NAVIGATION_CATEGORIES.find((category) => category.tabIds.includes(tabId))
 );
@@ -298,8 +308,7 @@ const persistNotifications = (notifications) => {
 
 export default function StandaloneShell({ locale = 'en' }) {
   const params = useParams();
-  const router = useRouter();
-  const slug = params?.slug || [];
+  const slug = useMemo(() => params?.slug || [], [params?.slug]);
   const idFromParams = params?.id;
   const tabFromParams = params?.tab;
 
@@ -334,7 +343,7 @@ export default function StandaloneShell({ locale = 'en' }) {
     if (idFromParams || slug.includes('workflow')) return 'workflows';
     if (slug.includes('agents')) return 'agents';
     if (slug.includes('design-agent')) return 'design-agent';
-    if (slug.includes('apps')) return 'apps';
+    if (slug.includes('apps')) return 'library';
     const firstSegment = slug[0];
     if (firstSegment && TABS.find(t => t.id === firstSegment)) return firstSegment;
     return 'image';
@@ -572,6 +581,9 @@ export default function StandaloneShell({ locale = 'en' }) {
 
   useEffect(() => {
     setHasMounted(true);
+    if (slug.includes('apps')) {
+      window.history.replaceState(null, '', studioPath('library'));
+    }
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       setApiKey(stored);
@@ -579,7 +591,7 @@ export default function StandaloneShell({ locale = 'en' }) {
       // Sync cookie immediately on mount to establish identity for background requests
       document.cookie = `muapi_key=${stored}; path=/; max-age=31536000; SameSite=Lax`;
     }
-  }, [fetchBalance]);
+  }, [fetchBalance, slug, studioPath]);
 
   const handleKeySave = useCallback((key) => {
     localStorage.setItem(STORAGE_KEY, key);
@@ -898,41 +910,15 @@ export default function StandaloneShell({ locale = 'en' }) {
                 })}
               </div>
 
-              {EXPLORE_APPS_TAB && (
-                <div className="mt-3 pt-3 border-t border-white/[0.07]">
-                  <a
-                    href={studioPath(EXPLORE_APPS_TAB.id)}
-                    onClick={(event) => handleNavigationItemClick(event, EXPLORE_APPS_TAB.id)}
-                    aria-current={activeTab === EXPLORE_APPS_TAB.id ? 'page' : undefined}
-                    aria-label={tabLabel(EXPLORE_APPS_TAB.id)}
-                    title={isSidebarCollapsed && !isMobileOpen ? tabLabel(EXPLORE_APPS_TAB.id) : undefined}
-                    className={`
-                      group relative flex items-center rounded-xl transition-all duration-150 text-[13px] font-semibold
-                      ${isSidebarCollapsed && !isMobileOpen ? 'h-11 w-11 justify-center mx-auto' : 'px-3 py-2.5 w-full gap-3'}
-                      ${activeTab === EXPLORE_APPS_TAB.id
-                        ? 'bg-gradient-to-r from-[#22d3ee]/15 to-purple-500/10 text-[#22d3ee] border border-[#22d3ee]/20'
-                        : 'text-white/60 hover:text-white hover:bg-white/[0.04] border border-transparent'
-                      }
-                    `}
-                  >
-                    {activeTab === EXPLORE_APPS_TAB.id && (
-                      <span className="absolute left-0 top-2 bottom-2 w-1 bg-gradient-to-b from-[#22d3ee] to-[#a855f7] rounded-r-full" />
-                    )}
-                    <span className={`flex-shrink-0 ${activeTab === EXPLORE_APPS_TAB.id ? 'text-[#22d3ee]' : 'text-white/50 group-hover:text-white'}`}>
-                      {EXPLORE_APPS_TAB.icon}
-                    </span>
-                    {(!isSidebarCollapsed || isMobileOpen) && (
-                      <span className="truncate">{tabLabel(EXPLORE_APPS_TAB.id)}</span>
-                    )}
-                  </a>
-                </div>
-              )}
             </nav>
           </aside>
         )}
 
         {/* Studio Content */}
         <div className="flex-1 min-h-0 h-full relative overflow-hidden bg-[#030303]">
+        <div className={activeTab === 'library' ? "h-full w-full" : "hidden"}>
+          <CreativeLibrary />
+        </div>
         <div className={activeTab === 'image' ? "h-full w-full" : "hidden"}>
           <GatewayStudio modality="image" />
         </div>
@@ -992,9 +978,6 @@ export default function StandaloneShell({ locale = 'en' }) {
               onGenerationError={makeErrorCallback('design-agent')}
             />
           )}
-        </div>
-        <div className={activeTab === 'apps' ? "h-full w-full" : "hidden"}>
-          {activeTab === 'apps' && <AppsStudio apiKey={apiKey} locale={locale} />}
         </div>
         <div className={activeTab === 'ai-influencer' ? "h-full w-full" : "hidden"}>
           <AiInfluencerStudio
