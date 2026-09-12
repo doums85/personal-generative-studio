@@ -1,16 +1,10 @@
 import './globals.css';
-import { Inter } from "next/font/google";
 import { headers } from 'next/headers';
 import { getLocaleConfig } from '@/lib/locales';
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
 export const metadata = {
-  title: 'Open Generative AI — Free AI Image & Video Studio',
-  description: 'Generate AI images and videos using 200+ models — Flux, Midjourney, Kling, Veo, Seedance and more.',
+  title: 'Personal Generative Studio',
+  description: 'Private AI studio for images, video, music, voice, cinema and creative workflows.',
 };
 
 export default async function RootLayout({ children }) {
@@ -22,7 +16,7 @@ export default async function RootLayout({ children }) {
 
   return (
     <html lang={htmlLang}>
-      <body className={inter.variable}>{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

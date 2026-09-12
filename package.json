@@ -1,7 +1,7 @@
 {
-  "name": "open-generative-ai",
-  "description": "Open-source alternative to HF AI — AI image, video, cinema and lip sync studio",
-  "homepage": "https://github.com/Anil-matcha/Open-Generative-AI",
+  "name": "personal-generative-studio",
+  "description": "Private multi-modal creative studio powered by Vercel AI Gateway",
+  "homepage": "https://github.com/doums85/personal-generative-studio",
   "private": true,
   "version": "2.0.0",
   "license": "MIT",
@@ -15,7 +15,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint auth.js proxy.js app/login app/api/gateway app/api/auth components/GatewayStudio.js lib/access-control.mjs lib/gateway lib/server tests/personal-studio",
+    "test": "node --test tests/personal-studio/*.test.mjs",
     "build:studio": "npm run build -w studio",
     "build:workflow": "npm run build -w workflow-builder",
     "build:agent": "npm run build -w ai-agent",
@@ -115,15 +116,19 @@
     }
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^3.0.192",
+    "ai": "^6.0.281",
     "ai-agent": "file:./packages/Open-Poe-AI/packages/agents",
     "axios": "^1.7.0",
-    "next": "^15.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "next": "^16.3.5",
+    "next-auth": "^5.0.0-beta.32",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-hot-toast": "^2.4.1",
     "studio": "*",
     "workflow-builder": "file:./packages/Vibe-Workflow/packages/workflow-builder",
-    "xtend": "^4.0.2"
+    "xtend": "^4.0.2",
+    "zod": "^4.6.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

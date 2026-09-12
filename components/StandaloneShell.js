@@ -9,8 +9,7 @@ const DesignAgentStudio = dynamic(() => import('studio').then(mod => mod.DesignA
   ssr: false,
   loading: () => <div className="h-full w-full bg-black flex items-center justify-center text-white/20">Loading Design Studio...</div>
 });
-import axios from 'axios';
-import ApiKeyModal from './ApiKeyModal';
+import GatewayStudio from './GatewayStudio';
 import { getCommonCopy, getLocaleConfig, localizeStudioPath } from '@/lib/locales';
 
 // Tab/category ids, icons, and English `label` fallbacks are stable
@@ -341,17 +340,14 @@ export default function StandaloneShell({ locale = 'en' }) {
     return 'image';
   };
   
-  const [apiKey, setApiKey] = useState(null);
+  const [apiKey, setApiKey] = useState('server-managed');
   const [activeTab, setActiveTab] = useState(getInitialTab());
 
   const [balance, setBalance] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
   const [hasMounted, setHasMounted] = useState(false);
-  const [showVadooBanner, setShowVadooBanner] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('vadoo_banner_dismissed') !== '1';
-    return true;
-  });
+  const [showVadooBanner, setShowVadooBanner] = useState(false);
 
   // Sidebar Collapsed & Mobile Drawer State
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -599,38 +595,6 @@ export default function StandaloneShell({ locale = 'en' }) {
     document.cookie = "muapi_key=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   }, []);
 
-  // Inject API key into all outgoing Axios requests (prop-based approach)
-  // We use an interceptor to be selective and NOT send the key to external domains like S3
-  useEffect(() => {
-    // Safety: Clear any global defaults that might have been set previously
-    delete axios.defaults.headers.common['x-api-key'];
-
-    if (!apiKey) return;
-
-    const interceptorId = axios.interceptors.request.use((config) => {
-      // Check if URL is local/proxied
-      const isRelative = config.url.startsWith('/') || !config.url.startsWith('http');
-      const isInternalProxy = config.url.includes('/api/app') || config.url.includes('/api/workflow') || config.url.includes('/api/agents') || config.url.includes('/api/api') || config.url.includes('/api/v1');
-
-      if (isRelative || isInternalProxy) {
-        config.headers['x-api-key'] = apiKey;
-      }
-      
-      return config;
-    });
-
-    return () => {
-      axios.interceptors.request.eject(interceptorId);
-    };
-  }, [apiKey]);
-
-  // Poll for balance every 30 seconds if key is present
-  useEffect(() => {
-    if (!apiKey) return;
-    const interval = setInterval(() => fetchBalance(apiKey), 30000);
-    return () => clearInterval(interval);
-  }, [apiKey, fetchBalance]);
-
   // Drag and Drop Handlers
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -674,10 +638,6 @@ export default function StandaloneShell({ locale = 'en' }) {
       <div className="animate-spin text-[#22d3ee] text-3xl">◌</div>
     </div>
   );
-
-  if (!apiKey) {
-    return <ApiKeyModal onSave={handleKeySave} locale={locale} />;
-  }
 
   return (
     <div 
@@ -781,7 +741,7 @@ export default function StandaloneShell({ locale = 'en' }) {
                 </svg>
               </div>
               <span className="text-sm font-bold tracking-tight hidden sm:block text-white">
-                {copy.shell.brand}
+                Personal Studio
               </span>
             </div>
           </div>
@@ -798,9 +758,7 @@ export default function StandaloneShell({ locale = 'en' }) {
           <div className="flex-shrink-0 flex items-center gap-3">
             <div className="flex items-center gap-2.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/5 transition-colors">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-xs font-bold text-white/90">
-                ${balance !== null ? `${balance}` : '---'}
-              </span>
+              <span className="text-xs font-bold text-white/90">Gateway privé</span>
             </div>
 
             <button
@@ -976,13 +934,13 @@ export default function StandaloneShell({ locale = 'en' }) {
         {/* Studio Content */}
         <div className="flex-1 min-h-0 h-full relative overflow-hidden bg-[#030303]">
         <div className={activeTab === 'image' ? "h-full w-full" : "hidden"}>
-          <ImageStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('image')} onGenerationEnd={makeGenerationEndCallback('image')} onGenerationComplete={makeSuccessCallback('image')} onGenerationError={makeErrorCallback('image')} />
+          <GatewayStudio modality="image" />
         </div>
         <div className={activeTab === 'layers' ? "h-full w-full" : "hidden"}>
           <LayersStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('layers')} onGenerationEnd={makeGenerationEndCallback('layers')} onGenerationComplete={makeSuccessCallback('layers')} onGenerationError={makeErrorCallback('layers')} />
         </div>
         <div className={activeTab === 'video' ? "h-full w-full" : "hidden"}>
-          <VideoStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('video')} onGenerationEnd={makeGenerationEndCallback('video')} onGenerationComplete={makeSuccessCallback('video')} onGenerationError={makeErrorCallback('video')} />
+          <GatewayStudio modality="video" />
         </div>
         <div className={activeTab === 'clipping' ? "h-full w-full" : "hidden"}>
           <ClippingStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('clipping')} onGenerationEnd={makeGenerationEndCallback('clipping')} onGenerationComplete={makeSuccessCallback('clipping')} onGenerationError={makeErrorCallback('clipping')} />
@@ -1003,7 +961,7 @@ export default function StandaloneShell({ locale = 'en' }) {
           <CinemaStudio apiKey={apiKey} locale={locale} onGenerationStart={makeGenerationStartCallback('cinema')} onGenerationEnd={makeGenerationEndCallback('cinema')} onGenerationComplete={makeSuccessCallback('cinema')} onGenerationError={makeErrorCallback('cinema')} />
         </div>
         <div className={activeTab === 'audio' ? "h-full w-full" : "hidden"}>
-          <AudioStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('audio')} onGenerationEnd={makeGenerationEndCallback('audio')} onGenerationComplete={makeSuccessCallback('audio')} onGenerationError={makeErrorCallback('audio')} />
+          <GatewayStudio modality="audio" />
         </div>
         <div className={activeTab === 'marketing' ? "h-full w-full" : "hidden"}>
           <MarketingStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('marketing')} onGenerationEnd={makeGenerationEndCallback('marketing')} onGenerationComplete={makeSuccessCallback('marketing')} onGenerationError={makeErrorCallback('marketing')} />
@@ -1176,32 +1134,26 @@ export default function StandaloneShell({ locale = 'en' }) {
       {showSettings && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in-up">
           <div className="bg-[#0a0a0a] border border-white/10 rounded-xl p-8 w-full max-w-sm shadow-2xl">
-            <h2 className="text-white font-bold text-lg mb-2">{copy.settingsModal.title}</h2>
+            <h2 className="text-white font-bold text-lg mb-2">Configuration privée</h2>
             <p className="text-white/40 text-[13px] mb-8">
-              {copy.settingsModal.subtitle}
+              Les identifiants AI Gateway sont conservés exclusivement sur le serveur.
             </p>
 
             <div className="space-y-4 mb-8">
               <div className="bg-white/5 border border-white/[0.03] rounded-md p-4">
                 <label className="block text-xs font-bold text-white/30 mb-2">
-                   {copy.settingsModal.activeApiKey}
+                   Connexion aux modèles
                 </label>
                 <div className="text-[13px] font-mono text-white/80">
-                  {apiKey.slice(0, 8)}••••••••••••••••
+                  AI Gateway · serveur
                 </div>
               </div>
             </div>
 
             <div className="flex gap-3">
               <button
-                onClick={handleKeyChange}
-                className="flex-1 h-10 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-semibold transition-all"
-              >
-                {copy.settingsModal.changeKey}
-              </button>
-              <button
                 onClick={() => setShowSettings(false)}
-                className="flex-1 h-10 rounded-md bg-white/5 text-white/80 hover:bg-white/10 text-xs font-semibold transition-all border border-white/5"
+                className="w-full h-10 rounded-md bg-white/5 text-white/80 hover:bg-white/10 text-xs font-semibold transition-all border border-white/5"
               >
                 {copy.settingsModal.close}
               </button>
