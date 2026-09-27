@@ -76,6 +76,21 @@ function modelLine(model) {
   return `- ${model.id} — ${model.name} (${model.provider}) · ${getModelPriceSummary(model)}`;
 }
 
+/**
+ * Renders an AI SDK warning as one readable line, e.g. `unsupported aspectRatio: This model does not support aspect ratio`.
+ * Handles the `unsupported` / `compatibility` shapes (`feature` + `details`), the `other` shape (`message`),
+ * legacy `unsupported-setting` warnings (`setting` + `details`) and anything else via JSON.
+ */
+export function formatWarning(warning) {
+  if (typeof warning === 'string') return warning;
+  if (!warning || typeof warning !== 'object') return String(warning);
+  const subject = warning.feature || warning.setting;
+  const details = warning.details || warning.message;
+  const head = [warning.type, subject].filter(Boolean).join(' ');
+  if (head && details) return `${head}: ${details}`;
+  return head || details || JSON.stringify(warning);
+}
+
 const modalitySchema = z.enum(['image', 'video', 'audio']).describe('image, video or audio (speech)');
 const modeSchema = z.enum(['economy', 'balanced', 'quality', 'manual']).optional()
   .describe('Routing strategy when no model is given: economy (cheapest), balanced (default), quality (best). manual requires `model`.');
@@ -136,7 +151,7 @@ export function createStudioServer({
       `Manifest: ${saved.manifestPath}`,
       `Estimated cost: ${formatEstimate(result.estimate)}`,
     ];
-    if (result.warnings?.length) lines.push(`Warnings: ${result.warnings.map((warning) => warning.message || warning.type || JSON.stringify(warning)).join('; ')}`);
+    if (result.warnings?.length) lines.push(`Warnings: ${result.warnings.map(formatWarning).join('; ')}`);
     return {
       content: [{ type: 'text', text: lines.join('\n') }],
       structuredContent: {

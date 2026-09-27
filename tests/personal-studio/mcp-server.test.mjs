@@ -7,7 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { normalizeGatewayCatalog } from '../../lib/gateway/catalog.mjs';
 import { buildMediaBaseName, extensionFor, slugify } from '../../lib/gateway/media-files.mjs';
-import { createStudioServer, defaultOutputDir, loadLocalEnv } from '../../mcp/server.mjs';
+import { createStudioServer, defaultOutputDir, formatWarning, loadLocalEnv } from '../../mcp/server.mjs';
 
 const catalog = normalizeGatewayCatalog({ data: [
   { id: 'lab/image-pro', name: 'Image Pro', type: 'image', owned_by: 'lab', pricing: { image: '0.08' } },
@@ -21,7 +21,10 @@ const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk
 function fakeGenerators(calls) {
   return {
     image: async (args) => { calls.push(args); return { media: [{ mediaType: 'image/png', base64: PNG_BASE64 }], warnings: [] }; },
-    video: async (args) => { calls.push(args); return { media: [{ mediaType: 'video/mp4', uint8Array: new Uint8Array([0, 1, 2]) }], warnings: [] }; },
+    video: async (args) => {
+      calls.push(args);
+      return { media: [{ mediaType: 'video/mp4', uint8Array: new Uint8Array([0, 1, 2]) }], warnings: [{ type: 'unsupported', feature: 'aspectRatio', details: 'This model does not support aspect ratio.' }] };
+    },
     audio: async (args) => { calls.push(args); return { media: [{ mediaType: 'audio/mpeg', base64: Buffer.from('audio').toString('base64') }], warnings: [] }; },
   };
 }
@@ -53,6 +56,18 @@ test('local env loading fills missing variables only', async () => {
   assert.equal(defaultOutputDir({}, '/work/project'), path.resolve('/work/project/generated-media'));
   assert.equal(defaultOutputDir({ STUDIO_OUTPUT_DIR: '/media' }, '/work/project'), path.resolve('/media'));
   await rm(root, { recursive: true, force: true });
+});
+
+test('provider warnings are rendered with their subject and details', () => {
+  assert.equal(
+    formatWarning({ type: 'unsupported', feature: 'aspectRatio', details: 'This model does not support aspect ratio. Use `size` instead.' }),
+    'unsupported aspectRatio: This model does not support aspect ratio. Use `size` instead.',
+  );
+  assert.equal(formatWarning({ type: 'compatibility', feature: 'size' }), 'compatibility size');
+  assert.equal(formatWarning({ type: 'other', message: 'Rate limited, retried once' }), 'other: Rate limited, retried once');
+  assert.equal(formatWarning({ type: 'unsupported-setting', setting: 'fps', details: 'fps is ignored' }), 'unsupported-setting fps: fps is ignored');
+  assert.equal(formatWarning('plain text'), 'plain text');
+  assert.equal(formatWarning({ code: 42 }), '{"code":42}');
 });
 
 test('the MCP server exposes discovery, estimation and generation tools', async () => {
@@ -91,6 +106,12 @@ test('the MCP server exposes discovery, estimation and generation tools', async 
     const manifest = JSON.parse(await readFile(image.structuredContent.manifest, 'utf8'));
     assert.equal(manifest.model.id, 'lab/image-fast');
     assert.equal(manifest.request.prompt, 'Un phare breton');
+    assert.doesNotMatch(image.content[0].text, /Warnings:/);
+
+    const warned = await client.callTool({ name: 'generate_video', arguments: { prompt: 'Vagues', duration: 4 } });
+    assert.equal(warned.isError, undefined, warned.content?.[0]?.text);
+    assert.match(warned.content[0].text, /Warnings: unsupported aspectRatio: This model does not support aspect ratio\./);
+    assert.deepEqual(warned.structuredContent.warnings, [{ type: 'unsupported', feature: 'aspectRatio', details: 'This model does not support aspect ratio.' }]);
 
     const speech = await client.callTool({ name: 'generate_speech', arguments: { text: 'Bonjour', voice: 'nova', outputDir: path.join(outputDir, 'voix') } });
     assert.equal(speech.isError, undefined, speech.content?.[0]?.text);
@@ -110,7 +131,7 @@ test('the MCP server exposes discovery, estimation and generation tools', async 
     const badReference = await client.callTool({ name: 'generate_image', arguments: { prompt: 'x', referenceImages: ['/nope/missing.png'] } });
     assert.equal(badReference.isError, true);
     assert.match(badReference.content[0].text, /not found/);
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
 
     const written = await readdir(outputDir);
     assert.equal(written.filter((name) => name.endsWith('.json')).length, 2);
