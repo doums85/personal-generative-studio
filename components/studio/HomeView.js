@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { KIND_META, formatUsd } from '@/lib/studio/client';
+import { KIND_META, formatUsd, setHandoff } from '@/lib/studio/client';
 import { useStudio } from './StudioProvider';
 import { GenerationDetail, GenerationThumb } from './GenerationCard';
 import { Button, EmptyState, Icon, cx } from './ui';
@@ -10,14 +10,14 @@ import { Button, EmptyState, Icon, cx } from './ui';
 const ACTIONS = [
   { view: 'image', icon: 'image', title: 'Créer une image', text: 'Scènes, portraits, packshots avec vos personnages et lieux.', tone: 'from-cyan-300/20 to-sky-500/10' },
   { view: 'video', icon: 'video', title: 'Créer une vidéo', text: 'Texte, image de départ ou références, avec ou sans audio natif.', tone: 'from-violet-400/20 to-fuchsia-500/10' },
-  { view: 'talking', icon: 'mic', title: 'Faire parler un avatar', text: 'Voix synthétisée synchronisée sur les lèvres de votre présentateur.', tone: 'from-fuchsia-400/20 to-rose-500/10' },
-  { view: 'elements', icon: 'users', title: 'Gérer les éléments', text: 'Personnages, avatars, lieux, produits et styles réutilisables.', tone: 'from-emerald-300/20 to-teal-500/10' },
+  { view: 'video', icon: 'mic', title: 'Vidéo avec dialogue', text: 'Le personnage parle : voix synthétisée ou native, lèvres synchronisées.', tone: 'from-fuchsia-400/20 to-rose-500/10', handoff: { speech: true } },
+  { view: 'elements', icon: 'users', title: 'Base de références', text: 'Avatars avec voix, personnes, lieux, produits, moodboards réutilisables.', tone: 'from-emerald-300/20 to-teal-500/10' },
 ];
 
 const STEPS = [
-  ['1', 'Créez vos éléments', 'Un personnage principal avec 2 ou 3 photos, ou une planche générée par l’IA. Ajoutez un lieu et un style.'],
-  ['2', 'Composez avec @', 'Dans Image ou Vidéo, écrivez « @Maya au @Café ». Les références partent avec le prompt.'],
-  ['3', 'Enchaînez', 'Depuis la galerie : animer une image, la décliner, en faire un avatar qui parle.'],
+  ['1', 'Constituez vos références', 'Un avatar avec sa voix et 2 ou 3 photos, la cuisine du tournage, le produit, un moodboard. Import ou planche générée par l’IA.'],
+  ['2', 'Composez avec @', 'Dans Image ou Vidéo, écrivez « @Maya dans la @Cuisine ». Les images et descriptions partent avec le prompt.'],
+  ['3', 'Faites parler', 'Dans Video Studio, activez « Dialogue » : la voix est synthétisée et la vidéo synchronisée sur les paroles.'],
 ];
 
 export default function HomeView({ navigate }) {
@@ -42,7 +42,7 @@ export default function HomeView({ navigate }) {
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {ACTIONS.map((action) => (
-          <button key={action.view} type="button" onClick={() => navigate(action.view)} className={cx('group rounded-2xl border border-white/[0.08] bg-gradient-to-br p-5 text-left transition hover:-translate-y-0.5 hover:border-white/20', action.tone)}>
+          <button key={action.title} type="button" onClick={() => { if (action.handoff) setHandoff({ view: action.view, ...action.handoff }); navigate(action.view); }} className={cx('group rounded-2xl border border-white/[0.08] bg-gradient-to-br p-5 text-left transition hover:-translate-y-0.5 hover:border-white/20', action.tone)}>
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.08] text-white transition group-hover:bg-white/[0.14]"><Icon name={action.icon} size={18} /></span>
             <p className="mt-4 text-sm font-semibold">{action.title}</p>
             <p className="mt-1 text-xs leading-5 text-white/50">{action.text}</p>
@@ -65,11 +65,11 @@ export default function HomeView({ navigate }) {
         <aside className="space-y-6">
           <section>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white/80">Éléments</h2>
+              <h2 className="text-sm font-semibold text-white/80">Références</h2>
               <button type="button" onClick={() => navigate('elements')} className="text-xs font-semibold text-cyan-300 hover:text-cyan-200">Tout voir →</button>
             </div>
             {elements.length === 0 ? (
-              <button type="button" onClick={() => navigate('elements')} className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-white/15 px-4 py-3 text-left text-xs text-white/50 hover:border-cyan-300/40 hover:text-white"><Icon name="plus" size={16} />Créer un premier personnage</button>
+              <button type="button" onClick={() => navigate('elements')} className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-white/15 px-4 py-3 text-left text-xs text-white/50 hover:border-cyan-300/40 hover:text-white"><Icon name="plus" size={16} />Créer une première référence</button>
             ) : (
               <div className="space-y-2">
                 {elements.slice(0, 6).map((element) => (

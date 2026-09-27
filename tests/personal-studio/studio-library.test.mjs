@@ -10,7 +10,7 @@ import { characterSheetPrompt, composePrompt, extractMentions } from '../../lib/
 import { StudioStore, StudioStoreError } from '../../lib/studio/store.mjs';
 import { publicMediaConfig, publicMediaUrl, signMedia, verifyMediaToken } from '../../lib/studio/public-media.mjs';
 import { estimateInWorkspace, generateInWorkspace } from '../../lib/studio/service.mjs';
-import { buildTalkingPrompt, chooseVideoModelForTalking, estimateSpeechSeconds, generateTalkingVideo, pickVideoDuration, wavDurationSeconds } from '../../lib/studio/talking.mjs';
+import { chooseVideoModelForSpeech, estimateSpeechSeconds, pickVideoDuration, wavDurationSeconds, withSpeechPrompt } from '../../lib/studio/speech.mjs';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
@@ -179,7 +179,7 @@ test('workspace generation injects element references and records the result', a
   }
 });
 
-test('talking pipeline synthesizes the voice, syncs the duration and stores both tracks', async () => {
+test('video dialogue synthesizes the voice, fits the duration and stores both tracks', async () => {
   assert.equal(wavDurationSeconds(wavBuffer(3)), 3);
   assert.equal(wavDurationSeconds(Buffer.from('not a wav file at all, really not')), null);
   const streaming = wavBuffer(4); streaming.writeUInt32LE(0xffffffff, 40);
@@ -192,20 +192,23 @@ test('talking pipeline synthesizes the voice, syncs the duration and stores both
   assert.equal(pickVideoDuration(sync, 9), 12);
   assert.equal(pickVideoDuration(sync, 20), 12);
   assert.equal(pickVideoDuration({ features: { durations: [] } }, 7), 8);
-  assert.equal(chooseVideoModelForTalking(catalog, { mode: 'reference', videoMode: 'economy' }).id, 'lab/video-sync');
-  assert.equal(chooseVideoModelForTalking(catalog, { mode: 'native', videoMode: 'quality' }).id, 'lab/video-native');
-  assert.throws(() => chooseVideoModelForTalking(catalog, { mode: 'reference', requested: 'lab/video-native' }), /piste audio/);
-  assert.match(buildTalkingPrompt({ element: { name: 'Maya', description: 'Présentatrice' }, script: 'Bonjour', language: 'fr', mode: 'native' }), /say exactly: "Bonjour"/);
+  assert.equal(chooseVideoModelForSpeech(catalog, { mode: 'reference', videoMode: 'economy' }).id, 'lab/video-sync');
+  assert.equal(chooseVideoModelForSpeech(catalog, { mode: 'native', videoMode: 'quality' }).id, 'lab/video-native');
+  assert.throws(() => chooseVideoModelForSpeech(catalog, { mode: 'reference', requested: 'lab/video-native' }), /piste audio/);
+  assert.match(withSpeechPrompt('Maya dans la cuisine', { script: 'Bonjour', language: 'fr', mode: 'native', speakerName: 'Maya' }), /^Maya dans la cuisine[\s\S]*Maya speaks to camera[\s\S]*say exactly: "Bonjour"/);
 
   const { store, cleanup } = await temporaryStore();
   try {
     const workspace = await store.createWorkspace({ name: 'Projet' });
     const avatar = await store.createElement(workspace.id, { kind: 'avatar', name: 'Maya', description: 'Présentatrice', voice: { model: 'openai/tts-1', voice: 'nova' } }, { images: [{ dataUrl: PNG }] });
     const calls = [];
-    await assert.rejects(generateTalkingVideo({ store, workspaceId: workspace.id, catalog, generators: generators(calls), maxCostUsd: null, request: { elementId: avatar.id, script: 'Bonjour' } }), (error) => error.code === 'public_url_required');
-    assert.equal(calls.length, 0, 'no paid call happens before the public URL check');
     const publicMedia = { baseUrl: 'https://studio.example.com', secret: 'secret' };
-    const generation = await generateTalkingVideo({ store, workspaceId: workspace.id, catalog, generators: generators(calls), maxCostUsd: null, publicMedia, request: { elementId: avatar.id, script: 'Bonjour à tous, bienvenue dans le studio.', aspectRatio: '9:16', resolution: '720p' } });
+    const base = { store, workspaceId: workspace.id, catalog, maxCostUsd: null };
+
+    await assert.rejects(generateInWorkspace({ ...base, generators: generators(calls), request: { modality: 'video', prompt: '@Maya présente le studio', speech: { script: 'Bonjour' } } }), (error) => error.code === 'public_url_required');
+    assert.equal(calls.length, 0, 'no paid call happens before the public URL check');
+
+    const generation = await generateInWorkspace({ ...base, generators: generators(calls), publicMedia, request: { modality: 'video', prompt: '@Maya présente le studio', aspectRatio: '9:16', resolution: '720p', speech: { script: 'Bonjour à tous, bienvenue dans le studio.' } } });
     assert.equal(calls[0].modality, 'audio');
     assert.equal(calls[0].voice, 'nova');
     assert.equal(calls[0].outputFormat, 'wav');
@@ -213,24 +216,36 @@ test('talking pipeline synthesizes the voice, syncs the duration and stores both
     assert.equal(calls[1].model.id, 'lab/video-sync');
     assert.equal(calls[1].duration, 4);
     assert.match(calls[1].referenceAudio, /^https:\/\/studio\.example\.com\/api\/studio\/public\/[a-f0-9]{40}\/.+\.wav$/);
+    assert.match(calls[1].startImage, /^data:image\/png/, 'the speaker portrait becomes the first frame');
+    assert.match(calls[1].prompt, /Maya speaks to camera[\s\S]*provided voice track/);
+    assert.equal(generation.kind, 'video');
+    assert.deepEqual(generation.files.map((file) => file.role), ['output', 'audio']);
+    assert.equal(generation.params.speech.seconds, 3);
+    assert.equal(generation.params.speech.speaker.name, 'Maya');
+    assert.deepEqual(generation.elementIds, [avatar.id]);
+    assert.ok(generation.estimate.amount > 0.2);
     const audioFile = generation.files.find((file) => file.role === 'audio');
     assert.equal(calls[1].referenceAudio, publicMediaUrl(publicMedia, workspace.id, audioFile.file));
     assert.equal(verifyMediaToken(signMedia(workspace.id, audioFile.file, 'secret'), workspace.id, audioFile.file, 'secret'), true);
     assert.equal(verifyMediaToken(signMedia(workspace.id, audioFile.file, 'other'), workspace.id, audioFile.file, 'secret'), false);
     assert.equal(publicMediaConfig({}), null);
     assert.deepEqual(publicMediaConfig({ STUDIO_PUBLIC_URL: 'https://x.test/', AUTH_SECRET: 's' }), { baseUrl: 'https://x.test', secret: 's' });
-    assert.match(calls[1].startImage, /^data:image\/png/);
-    assert.equal(generation.kind, 'talking');
-    assert.deepEqual(generation.files.map((file) => file.role), ['output', 'audio']);
-    assert.equal(generation.params.speechSeconds, 3);
-    assert.ok(generation.estimate.amount > 0.2);
 
-    const noImage = await store.createElement(workspace.id, { kind: 'avatar', name: 'Sans image' });
-    await assert.rejects(generateTalkingVideo({ store, workspaceId: workspace.id, catalog, generators: generators(calls), maxCostUsd: null, publicMedia, request: { elementId: noImage.id, script: 'x' } }), /image de référence/);
-    await assert.rejects(generateTalkingVideo({ store, workspaceId: workspace.id, catalog, generators: generators(calls), maxCostUsd: null, publicMedia, request: { elementId: avatar.id, script: 'x'.repeat(400) } }), (error) => error.code === 'script_too_long');
-    const native = await generateTalkingVideo({ store, workspaceId: workspace.id, catalog, generators: generators(calls), maxCostUsd: null, request: { elementId: avatar.id, script: 'Salut', mode: 'native', videoModel: 'lab/video-native', aspectRatio: '16:9' } });
+    await assert.rejects(generateInWorkspace({ ...base, generators: generators(calls), publicMedia, request: { modality: 'video', prompt: 'x', speech: { script: 'x'.repeat(400), speakerId: avatar.id } } }), (error) => error.code === 'script_too_long');
+    await assert.rejects(generateInWorkspace({ ...base, generators: generators(calls), publicMedia, request: { modality: 'video', prompt: 'x', model: 'lab/video-native', speech: { script: 'Salut' } } }), (error) => error.code === 'model_incompatible');
+
+    const native = await generateInWorkspace({ ...base, generators: generators(calls), request: { modality: 'video', prompt: 'Une cuisinière explique sa recette', model: 'lab/video-native', aspectRatio: '16:9', speech: { script: 'Salut', mode: 'native' } } });
     assert.equal(native.files.length, 1);
     assert.equal(calls.at(-1).generateAudio, true);
+    assert.equal(calls.at(-1).startImage, undefined);
+    assert.match(calls.at(-1).prompt, /The speaking character speaks to camera[\s\S]*say exactly: "Salut"/);
+    assert.equal(native.params.speech.mode, 'native');
+
+    const estimate = await estimateInWorkspace({ ...base, request: { modality: 'video', prompt: '@Maya', speech: { script: 'Bonjour à tous, bienvenue.' } } });
+    assert.equal(estimate.model.id, 'lab/video-sync');
+    assert.equal(estimate.duration, 4);
+    assert.equal(estimate.speechModel.id, 'openai/tts-1');
+    assert.ok(estimate.estimate.amount > 0.2);
   } finally {
     await cleanup();
   }

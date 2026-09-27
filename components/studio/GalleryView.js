@@ -7,7 +7,7 @@ import { GenerationDetail, GenerationThumb } from './GenerationCard';
 import { Chip, EmptyState, Icon } from './ui';
 
 const FILTERS = [
-  ['all', 'Tout', 'grid'], ['image', 'Images', 'image'], ['video', 'Vidéos', 'video'], ['talking', 'Avatars parlants', 'mic'], ['speech', 'Voix', 'wave'], ['favorites', 'Favoris', 'star'],
+  ['all', 'Tout', 'grid'], ['image', 'Images', 'image'], ['video', 'Vidéos', 'video'], ['dialogue', 'Avec dialogue', 'mic'], ['speech', 'Voix', 'wave'], ['favorites', 'Favoris', 'star'],
 ];
 
 export default function GalleryView({ navigate }) {
@@ -15,7 +15,7 @@ export default function GalleryView({ navigate }) {
   const [filter, setFilter] = useState('all');
   const [viewing, setViewing] = useState(null);
 
-  const visible = useMemo(() => generations.filter((item) => filter === 'all' || (filter === 'favorites' ? item.favorite : item.kind === filter)), [generations, filter]);
+  const visible = useMemo(() => generations.filter((item) => filter === 'all' || (filter === 'favorites' ? item.favorite : filter === 'dialogue' ? Boolean(item.params?.speech) : item.kind === filter)), [generations, filter]);
   const spent = generations.reduce((total, item) => total + (item.estimate?.amount || 0), 0);
   const current = viewing ? generations.find((item) => item.id === viewing.id) || viewing : null;
 
@@ -29,7 +29,7 @@ export default function GalleryView({ navigate }) {
         </div>
         <div className="grid grid-cols-3 gap-2 text-center">
           <Stat label="Créations" value={generations.length} />
-          <Stat label="Vidéos" value={generations.filter((item) => item.kind === 'video' || item.kind === 'talking').length} />
+          <Stat label="Vidéos" value={generations.filter((item) => item.kind === 'video').length} />
           <Stat label="Dépense estimée" value={formatUsd(spent)} />
         </div>
       </div>

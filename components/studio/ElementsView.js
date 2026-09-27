@@ -87,7 +87,7 @@ function ElementDetail({ element, onClose, onEdit, navigate }) {
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="primary" icon="image" onClick={() => openIn('image')}>Image</Button>
               <Button size="sm" variant="accent" icon="video" onClick={() => openIn('video')}>Vidéo</Button>
-              {(element.kind === 'avatar' || element.kind === 'character') && <Button size="sm" icon="mic" onClick={() => { setHandoff({ view: 'talking', elementId: element.id }); onClose(); navigate('talking'); }} disabled={!element.images?.length} title={!element.images?.length ? 'Ajoutez d’abord un portrait' : undefined}>Faire parler</Button>}
+              {(element.kind === 'avatar' || element.kind === 'character') && <Button size="sm" icon="mic" onClick={() => { setHandoff({ view: 'video', prompt: `@${element.name.split(' ').slice(0, 2).join(' ')} `, elementIds: [element.id], speech: { speakerId: element.id } }); onClose(); navigate('video'); }} disabled={!element.images?.length} title={!element.images?.length ? 'Ajoutez d’abord un portrait' : undefined}>Vidéo avec dialogue</Button>}
             </div>
             <p className="mt-2 text-[11px] text-white/35">Dans un prompt, écrivez simplement <span className="font-mono text-cyan-200">@{element.name.split(' ')[0]}</span>.</p>
           </section>
@@ -124,15 +124,16 @@ export default function ElementsView({ navigate }) {
     <div className="mx-auto max-w-[1500px] p-4 md:p-6">
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">Bibliothèque du projet</p>
-          <h1 className="mt-1 text-2xl font-semibold">Personnages, avatars, lieux et produits</h1>
-          <p className="mt-1.5 max-w-2xl text-sm text-white/45">Chaque élément embarque ses images de référence et sa description. Mentionnez-le avec @ dans un prompt : ses références sont envoyées au modèle pour garder le même visage, le même décor, le même produit d’une création à l’autre.</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">Base de références du projet</p>
+          <h1 className="mt-1 text-2xl font-semibold">Avatars, personnes, lieux, produits, moodboards</h1>
+          <p className="mt-1.5 max-w-2xl text-sm text-white/45">Tout ce que vos images et vidéos doivent respecter : un avatar avec sa voix et sa description, la cuisine d’un tournage, un produit, un style. Mentionnez une référence avec @ dans un prompt : ses images et sa description partent avec la génération.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" icon="plus" onClick={() => setCreating('character')}>Nouveau personnage</Button>
           <Button variant="accent" icon="mic" onClick={() => setCreating('avatar')}>Nouvel avatar</Button>
           <Button icon="map" onClick={() => setCreating('place')}>Lieu</Button>
           <Button icon="tag" onClick={() => setCreating('product')}>Produit</Button>
+          <Button icon="layers" onClick={() => setCreating('other')}>Autre référence</Button>
         </div>
       </div>
 
@@ -143,7 +144,7 @@ export default function ElementsView({ navigate }) {
       </div>
 
       {visible.length === 0 ? (
-        <EmptyState icon="users" title={elements.length ? 'Aucun élément ne correspond' : 'Votre bibliothèque est vide'} description={elements.length ? 'Modifiez le filtre ou la recherche.' : 'Commencez par un personnage principal : importez quelques photos ou laissez l’IA générer une planche de référence à partir d’une description.'} action={!elements.length && <Button variant="primary" icon="plus" onClick={() => setCreating('character')}>Créer mon premier personnage</Button>} />
+        <EmptyState icon="users" title={elements.length ? 'Aucune référence ne correspond' : 'Votre base de références est vide'} description={elements.length ? 'Modifiez le filtre ou la recherche.' : 'Commencez par un avatar ou un personnage principal : importez quelques photos ou laissez l’IA générer une planche de référence, puis ajoutez ses lieux et produits.'} action={!elements.length && <Button variant="primary" icon="plus" onClick={() => setCreating('avatar')}>Créer mon premier avatar</Button>} />
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {visible.map((element) => <ElementCard key={element.id} element={element} onOpen={setViewing} />)}

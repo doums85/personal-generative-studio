@@ -14,5 +14,6 @@ export default async function StudioPage({ params }) {
   if (isStudioView(first)) return <StudioShell view={first || 'home'} />;
   if (first === 'library') return <StudioShell view="elements" />;
   if (first === 'audio') return <StudioShell view="voice" />;
+  if (first === 'talking' || first === 'lipsync-studio') return <StudioShell view="video" />;
   return <StandaloneShell />;
 }

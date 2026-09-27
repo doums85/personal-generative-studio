@@ -57,14 +57,14 @@ npm run build
 
 The default automated tests never make paid model calls.
 
-## Workspaces, elements and the gallery
+## Workspaces, references and the gallery
 
 The studio is organised like a production tool:
 
-- **Workspaces** (one per project) hold their own elements, gallery and art direction. The art direction (`Direction artistique du projet`) is appended to every image and video prompt of the project.
-- **Elements** are reusable references: characters, avatars (a character with a voice), places, objects, products and visual styles. Each element carries several reference images (uploaded or generated as a character/location sheet) and a description. Mention an element with `@Name` in any prompt, or pick it in the composer: its description is added as a continuity block and its main image is sent as a reference to models that accept one (GPT Image, FLUX Kontext / FLUX.2, Seedream, Grok Imagine, Wan, Seedance, Veo 3.1, Kling 3.0…).
-- **Gallery**: every generation is stored with its prompt, model, parameters, warnings and estimated cost. From a result you can animate an image into a video, make a variation, save it as an element or turn it into an avatar.
-- **Avatar parlant**: pick an avatar, write a script and choose a method. *Voix synthétisée + synchro* generates the voice with a speech model (OpenAI TTS, Gemini TTS, Fish Audio, Grok TTS) and feeds the track to a video model that accepts an audio reference (Seedance 2.0, Wan 2.7, MiniMax H3, Grok Imagine 1.5); the clip duration is fitted to the voice. *Voix native du modèle* asks a video model with native audio (Veo 3, Kling, Grok Imagine, Seedance 1.5…) to speak the script itself.
+- **Workspaces** (one per project) hold their own references, gallery and art direction. The art direction (`Direction artistique du projet`) is appended to every image and video prompt of the project.
+- **References** (`Références`) are the project's reference database: avatars (a person with reference images, a description and a voice), characters, places (the kitchen of a cooking channel, a shop…), objects, products, visual styles and any other reference image (moodboard, plan, logo). Each entry carries several images (uploaded or generated as a character/location sheet) and a description. Mention it with `@Name` in any prompt, or pick it in the composer: its description is added as a continuity block and its main image is sent as a reference to models that accept one (GPT Image, FLUX Kontext / FLUX.2, Seedream, Grok Imagine, Wan, Seedance, Veo 3.1, Kling 3.0…).
+- **Video Studio with synchronized dialogue**: switch on `Dialogue synchronisé`, write what is said and choose who speaks. *Voix synthétisée + synchro* generates the voice with a speech model (OpenAI TTS, Gemini TTS, Fish Audio, Grok TTS) using the speaker's default voice, then feeds the track to a video model that accepts an audio reference (Seedance 2.0, Wan 2.6/2.7/3.0, MiniMax H3, Grok Imagine 1.5) so lips and pauses follow the voice; the clip duration is fitted to the speech. *Voix native du modèle* asks a video model with native audio (Veo 3, Kling, Grok Imagine, Seedance 1.5…) to speak the script itself. The speaker's portrait becomes the first frame when no start image is chosen, and both the video and the voice track are kept in the gallery.
+- **Gallery**: every generation is stored with its prompt, model, parameters, dialogue, warnings and estimated cost. From a result you can animate an image into a video, make a variation, save it as a reference or turn it into an avatar.
 - **Voix off**: text-to-speech playground; the chosen voice can be saved on an avatar.
 
 Everything lives on disk under `STUDIO_DATA_DIR` (default `./data`, ignored by git): `workspaces.json`, then `workspaces/<id>/elements.json`, `generations.json` and `media/`. Back this folder up to keep your projects; on Vercel the filesystem is ephemeral, so self-host (Docker) or mount persistent storage for a durable library.
@@ -79,7 +79,7 @@ The advanced upstream studios (Layers, Cinema, Clipping, Motion Control, Marketi
 
 The studio ships an MCP server (`mcp/server.mjs`, stdio transport) that exposes the same AI Gateway generation engine as the web app. Agents such as Claude Code can discover models, estimate costs and generate images, videos and speech; every output is written to disk in the project the agent is working on.
 
-Tools: `list_models`, `estimate_cost`, `generate_image`, `generate_video`, `generate_speech`, plus `list_workspaces` and `list_elements` to reuse the studio library: pass `elements: ["Maya", "Café"]` (names or ids) with a `workspace` to inject the same reference images and continuity descriptions as the web app.
+Tools: `list_models`, `estimate_cost`, `generate_image`, `generate_video`, `generate_speech`, plus `list_workspaces` and `list_elements` to reuse the studio references: pass `elements: ["Maya", "Cuisine"]` (names or ids) with a `workspace` to inject the same reference images and continuity descriptions as the web app, and `dialogue` on `generate_video` to get a clip whose lips are synchronized to the spoken text (native-audio models).
 
 Inside this repository, the checked-in `.mcp.json` registers the server automatically for Claude Code. To use the studio from any other project, register it once at user scope:
 

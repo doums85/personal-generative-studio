@@ -7,7 +7,6 @@ import { StudioProvider, useStudio } from './StudioProvider';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import HomeView from './HomeView';
 import CreateView from './CreateView';
-import TalkingView from './TalkingView';
 import VoiceView from './VoiceView';
 import ElementsView from './ElementsView';
 import GalleryView from './GalleryView';
@@ -16,7 +15,7 @@ import { Icon, Notice, Spinner, cx } from './ui';
 
 
 const NAV = [
-  { title: 'Créer', items: ['image', 'video', 'talking', 'voice'] },
+  { title: 'Créer', items: ['image', 'video', 'voice'] },
   { title: 'Projet', items: ['elements', 'gallery'] },
 ];
 
@@ -140,7 +139,6 @@ function Frame({ view }) {
       home: <HomeView navigate={navigate} />,
       image: <CreateView key={`image-${workspace.id}`} modality="image" navigate={navigate} />,
       video: <CreateView key={`video-${workspace.id}`} modality="video" navigate={navigate} />,
-      talking: <TalkingView key={`talking-${workspace.id}`} navigate={navigate} />,
       voice: <VoiceView key={`voice-${workspace.id}`} navigate={navigate} />,
       elements: <ElementsView key={`elements-${workspace.id}`} navigate={navigate} />,
       gallery: <GalleryView key={`gallery-${workspace.id}`} navigate={navigate} />,

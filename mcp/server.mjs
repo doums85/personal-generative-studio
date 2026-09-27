@@ -19,6 +19,7 @@ import { getModelPriceSummary } from '../lib/gateway/pricing.mjs';
 import { MEDIA_TYPE_BY_EXTENSION, saveGeneratedMedia } from '../lib/gateway/media-files.mjs';
 import { composePrompt } from '../lib/studio/prompt.mjs';
 import { trimReferences } from '../lib/studio/service.mjs';
+import { chooseVideoModelForSpeech, estimateSpeechSeconds, pickVideoDuration, withSpeechPrompt } from '../lib/studio/speech.mjs';
 import { StudioStore, resolveDataDir } from '../lib/studio/store.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -332,7 +333,7 @@ export function createStudioServer({
 
   server.registerTool('generate_video', {
     title: 'Generate video',
-    description: 'Generates a video from a prompt (text-to-video) or from a reference image (image-to-video) and writes it to disk. Video generations can take several minutes.',
+    description: 'Generates a video from a prompt (text-to-video), from a first frame (image-to-video) or with studio elements as references, optionally with a spoken dialogue synchronized to the lips, and writes it to disk. Video generations can take several minutes.',
     inputSchema: {
       prompt: z.string().min(1).max(8000).describe('Scene, motion and camera description'),
       model: modelSchema,
@@ -344,16 +345,28 @@ export function createStudioServer({
       generateAudio: z.boolean().optional().describe('Ask the model for native audio when supported'),
       referenceImage: z.string().optional().describe('Local image path used as the first frame (image-to-video)'),
       referenceImages: z.array(z.string()).max(6).optional().describe('Local image paths used as identity/style references (reference-to-video models)'),
+      dialogue: z.string().max(4000).optional().describe('Spoken text: the video is generated with lips synchronized to this dialogue (native audio; requires a model with native audio such as Veo 3, Kling, Grok Imagine or Seedance 1.5)'),
+      dialogueLanguage: z.string().max(8).optional().describe('ISO 639-1 language of the dialogue (default fr)'),
       workspace: workspaceSchema,
       elements: elementsSchema,
       outputDir: outputDirSchema,
     },
     annotations: { destructiveHint: false, openWorldHint: true },
-  }, async ({ referenceImage, referenceImages = [], workspace, elements, outputDir: requestedOutputDir, ...args }) => {
+  }, async ({ referenceImage, referenceImages = [], dialogue, dialogueLanguage, workspace, elements, outputDir: requestedOutputDir, ...args }) => {
     try {
       const startImage = referenceImage ? await readReferenceImage(referenceImage, cwd) : undefined;
       const references = await Promise.all(referenceImages.map((file) => readReferenceImage(file, cwd)));
-      return await runAndSave({ modality: 'video', ...args, startImage, referenceImages: references }, requestedOutputDir, { workspace, elements });
+      const input = { modality: 'video', ...args, startImage, referenceImages: references };
+      if (dialogue) {
+        const catalog = await getCatalog();
+        const model = chooseVideoModelForSpeech(catalog, { mode: 'native', requested: args.model, videoMode: args.mode === 'manual' ? 'balanced' : args.mode || 'balanced', needsStartImage: Boolean(startImage) });
+        input.model = model.id;
+        input.mode = 'manual';
+        input.generateAudio = true;
+        input.duration = pickVideoDuration(model, estimateSpeechSeconds(dialogue), args.duration);
+        input.prompt = withSpeechPrompt(args.prompt, { script: dialogue, language: dialogueLanguage || 'fr', mode: 'native' });
+      }
+      return await runAndSave(input, requestedOutputDir, { workspace, elements });
     } catch (error) {
       return errorResult(error);
     }

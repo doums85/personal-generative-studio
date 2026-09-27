@@ -6,11 +6,16 @@ import { useStudio } from './StudioProvider';
 import ElementEditor from './ElementEditor';
 import { Badge, Button, Icon, IconButton, Media, Modal, Notice, cx } from './ui';
 
-const KIND_BADGE = { image: ['Image', 'cyan'], video: ['Vidéo', 'violet'], talking: ['Avatar parlant', 'violet'], speech: ['Voix', 'amber'] };
+const KIND_BADGE = { image: ['Image', 'cyan'], video: ['Vidéo', 'violet'], speech: ['Voix', 'amber'] };
+
+function badgeFor(generation) {
+  if (generation.kind === 'video' && generation.params?.speech) return ['Vidéo · dialogue', 'violet'];
+  return KIND_BADGE[generation.kind] || ['Média', 'neutral'];
+}
 
 export function GenerationThumb({ generation, onOpen, className = '' }) {
   const file = generation.files.find((item) => item.role !== 'audio') || generation.files[0];
-  const [label, tone] = KIND_BADGE[generation.kind] || ['Média', 'neutral'];
+  const [label, tone] = badgeFor(generation);
   return (
     <button type="button" onClick={() => onOpen?.(generation)} className={cx('group relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left transition hover:border-cyan-300/50', className)}>
       {file?.mediaType?.startsWith('audio/') ? (
@@ -67,7 +72,7 @@ export function GenerationDetail({ generation, onClose, navigate }) {
   }
 
   return (
-    <Modal open onClose={onClose} title={KIND_BADGE[generation.kind]?.[0] || 'Création'} subtitle={`${generation.model?.name || ''} · ${formatDate(generation.createdAt)}${generation.durationMs ? ` · ${formatDurationMs(generation.durationMs)}` : ''}`} width="max-w-5xl">
+    <Modal open onClose={onClose} title={badgeFor(generation)[0]} subtitle={`${generation.model?.name || ''} · ${formatDate(generation.createdAt)}${generation.durationMs ? ` · ${formatDurationMs(generation.durationMs)}` : ''}`} width="max-w-5xl">
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-3">
           <div className="flex items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/60">
@@ -89,6 +94,12 @@ export function GenerationDetail({ generation, onClose, navigate }) {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">Prompt</p>
             <p className="mt-1 whitespace-pre-wrap leading-6 text-white/85">{generation.prompt}</p>
           </section>
+          {generation.params?.speech?.script && (
+            <section>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">Dialogue{generation.params.speech.speaker ? ` · ${generation.params.speech.speaker.name}` : ''}</p>
+              <p className="mt-1 whitespace-pre-wrap leading-6 text-white/85">« {generation.params.speech.script} »</p>
+            </section>
+          )}
           {usedElements.length > 0 && (
             <section>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">Éléments utilisés</p>
@@ -102,7 +113,8 @@ export function GenerationDetail({ generation, onClose, navigate }) {
             {generation.params?.resolution && <Stat label="Résolution" value={generation.params.resolution} />}
             {generation.params?.duration && <Stat label="Durée" value={`${generation.params.duration} s`} />}
             {generation.params?.mode && <Stat label="Mode" value={generation.params.mode} />}
-            {generation.params?.voice && <Stat label="Voix" value={generation.params.voice} />}
+            {generation.params?.speech && <Stat label="Dialogue" value={`${generation.params.speech.mode === 'native' ? 'voix native' : 'piste synchronisée'}${generation.params.speech.voice ? ` · ${generation.params.speech.voice}` : ''}${generation.params.speech.seconds ? ` · ${generation.params.speech.seconds} s` : ''}`} />}
+            {generation.params?.voice && !generation.params?.speech && <Stat label="Voix" value={generation.params.voice} />}
             {output?.bytes && <Stat label="Fichier" value={`${output.mediaType} · ${Math.round(output.bytes / 1024)} Ko`} />}
           </section>
           {generation.warnings?.length > 0 && <Notice tone="warning"><ul className="list-disc space-y-1 pl-4">{generation.warnings.map((warning, index) => <li key={index}>{describeWarning(warning)}</li>)}</ul></Notice>}
