@@ -15,7 +15,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint auth.js proxy.js app/login app/api/gateway app/api/auth components/GatewayStudio.js components/CreativeLibrary.js components/StandaloneShell.js lib/access-control.mjs lib/creative-library.js lib/gateway lib/server tests/personal-studio",
+    "lint": "eslint auth.js proxy.js app/login app/api/gateway app/api/auth components/GatewayStudio.js components/CreativeLibrary.js components/StandaloneShell.js lib/access-control.mjs lib/creative-library.js lib/gateway lib/server tests/personal-studio mcp",
     "test": "node --test tests/personal-studio/*.test.mjs",
     "build:studio": "npm run build -w studio",
     "build:workflow": "npm run build -w workflow-builder",
@@ -35,7 +35,8 @@
     "package:linux:deb": "node scripts/package-linux-deb.js",
     "package:linux:deb:arm64": "node scripts/package-linux-deb.js --arch arm64",
     "package:linux:deb:x64": "node scripts/package-linux-deb.js --arch x64",
-    "electron:build:all": "vite build && electron-builder --mac --win --linux"
+    "electron:build:all": "vite build && electron-builder --mac --win --linux",
+    "mcp": "node mcp/server.mjs"
   },
   "build": {
     "appId": "ai.generative.open",
@@ -117,6 +118,7 @@
   },
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.192",
+    "@modelcontextprotocol/sdk": "^1.30.1",
     "ai": "^6.0.281",
     "ai-agent": "file:./packages/Open-Poe-AI/packages/agents",
     "axios": "^1.7.0",
@@ -142,5 +144,8 @@
     "tailwindcss": "^3.4.0",
     "vite": "^5.4.0"
   },
-  "main": "electron/main.js"
+  "main": "electron/main.js",
+  "bin": {
+    "personal-generative-studio-mcp": "mcp/server.mjs"
+  }
 }

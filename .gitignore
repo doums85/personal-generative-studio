@@ -36,3 +36,6 @@ out/
 .env
 .env.*
 !.env.example
+
+# Generated media (MCP server default output)
+generated-media/

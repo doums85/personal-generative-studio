@@ -1,0 +1,39 @@
+{
+  "createdAt": "2026-09-27T12:50:50.323Z",
+  "modality": "image",
+  "prompt": "Un phare breton au crépuscule, lumière dorée rasante, mer calme, style photographie éditoriale",
+  "model": {
+    "id": "recraft/recraft-v4.1-flash",
+    "name": "Recraft V4.1 Flash",
+    "provider": "recraft"
+  },
+  "request": {
+    "modality": "image",
+    "prompt": "Un phare breton au crépuscule, lumière dorée rasante, mer calme, style photographie éditoriale",
+    "mode": "economy",
+    "aspectRatio": "16:9",
+    "count": 1,
+    "voice": "alloy",
+    "referenceImages": 0
+  },
+  "estimate": {
+    "amount": 0.007,
+    "currency": "USD",
+    "basis": "1 × 0.007 USD per image",
+    "assumed": false
+  },
+  "warnings": [
+    {
+      "type": "unsupported",
+      "feature": "aspectRatio",
+      "details": "This model does not support aspect ratio. Use `size` instead."
+    }
+  ],
+  "files": [
+    {
+      "path": "/home/user/personal-generative-studio/docs/assets/mcp-smoke-test.webp",
+      "mediaType": "image/webp",
+      "bytes": 1292892
+    }
+  ]
+}
