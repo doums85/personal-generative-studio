@@ -8,10 +8,12 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { normalizeGatewayCatalog } from '../../lib/gateway/catalog.mjs';
 import { buildMediaBaseName, extensionFor, slugify } from '../../lib/gateway/media-files.mjs';
 import { createStudioServer, defaultOutputDir, formatWarning, loadLocalEnv } from '../../mcp/server.mjs';
+import { StudioStore } from '../../lib/studio/store.mjs';
 
 const catalog = normalizeGatewayCatalog({ data: [
   { id: 'lab/image-pro', name: 'Image Pro', type: 'image', owned_by: 'lab', pricing: { image: '0.08' } },
   { id: 'lab/image-fast', name: 'Image Fast', type: 'image', owned_by: 'lab', pricing: { image: '0.01' } },
+  { id: 'openai/gpt-image-1-mini', name: 'GPT Image Mini', type: 'image', owned_by: 'openai', pricing: { image: '0.02' } },
   { id: 'lab/video-pro', name: 'Video Pro', type: 'video', owned_by: 'lab', pricing: { second: '0.05' } },
   { id: 'lab/speech-fast', name: 'Speech Fast', type: 'speech', owned_by: 'lab', pricing: { speech_input_character_cost: '0.00001' } },
 ] });
@@ -82,7 +84,7 @@ test('the MCP server exposes discovery, estimation and generation tools', async 
 
   try {
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((tool) => tool.name).sort(), ['estimate_cost', 'generate_image', 'generate_speech', 'generate_video', 'list_models']);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ['estimate_cost', 'generate_image', 'generate_speech', 'generate_video', 'list_elements', 'list_models', 'list_workspaces']);
 
     const listed = await client.callTool({ name: 'list_models', arguments: { modality: 'image', search: 'fast' } });
     assert.equal(listed.isError, undefined);
@@ -121,7 +123,7 @@ test('the MCP server exposes discovery, estimation and generation tools', async 
 
     const video = await client.callTool({ name: 'generate_video', arguments: { prompt: 'Vagues', referenceImage: image.structuredContent.files[0], duration: 4 } });
     assert.equal(video.isError, undefined, video.content?.[0]?.text);
-    assert.match(calls.at(-1).referenceImages[0], /^data:image\/png;base64,/);
+    assert.match(calls.at(-1).startImage, /^data:image\/png;base64,/);
     assert.match(video.structuredContent.files[0], /\.mp4$/);
 
     const failed = await client.callTool({ name: 'generate_image', arguments: { prompt: 'x', model: 'lab/missing' } });
@@ -137,6 +139,40 @@ test('the MCP server exposes discovery, estimation and generation tools', async 
     assert.equal(written.filter((name) => name.endsWith('.json')).length, 2);
   } finally {
     await close();
+    await rm(outputDir, { recursive: true, force: true });
+  }
+});
+
+test('the MCP server reads the studio library and injects elements into generations', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'pgs-mcp-lib-'));
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), 'pgs-mcp-out-'));
+  const store = new StudioStore({ rootDir: root });
+  const workspace = await store.createWorkspace({ name: 'Campagne', settings: { styleNotes: 'Grain argentique' } });
+  const maya = await store.createElement(workspace.id, { kind: 'character', name: 'Maya', description: 'Cheveux courts' }, { images: [{ dataUrl: `data:image/png;base64,${PNG_BASE64}` }] });
+  const calls = [];
+  const { client, close } = await connect({ loadCatalog: async () => catalog, generators: fakeGenerators(calls), outputDir, store, now: () => new Date(2026, 8, 27, 12, 0, 0) });
+  try {
+    const { tools } = await client.listTools();
+    assert.ok(tools.some((tool) => tool.name === 'list_workspaces') && tools.some((tool) => tool.name === 'list_elements'));
+    const workspaces = await client.callTool({ name: 'list_workspaces', arguments: {} });
+    assert.equal(workspaces.structuredContent.workspaces[0].name, 'Campagne');
+    const elements = await client.callTool({ name: 'list_elements', arguments: { workspace: 'Campagne' } });
+    assert.equal(elements.structuredContent.elements[0].name, 'Maya');
+    assert.match(elements.structuredContent.elements[0].images[0], /\.png$/);
+
+    const image = await client.callTool({ name: 'generate_image', arguments: { prompt: '@Maya sur la plage', elements: ['maya'], workspace: 'Campagne', model: 'openai/gpt-image-1-mini' } });
+    assert.equal(image.isError, undefined, image.content?.[0]?.text);
+    assert.match(calls.at(-1).prompt, /Maya sur la plage[\s\S]*Continuity references[\s\S]*Project style: Grain argentique/);
+    assert.equal(calls.at(-1).referenceImages.length, 1);
+    assert.deepEqual(image.structuredContent.elementIds, [maya.id]);
+    assert.match(image.content[0].text, /Elements: 1 injected/);
+
+    const missing = await client.callTool({ name: 'generate_image', arguments: { prompt: 'x', elements: ['Inconnu'] } });
+    assert.equal(missing.isError, true);
+    assert.match(missing.content[0].text, /not found/);
+  } finally {
+    await close();
+    await rm(root, { recursive: true, force: true });
     await rm(outputDir, { recursive: true, force: true });
   }
 });

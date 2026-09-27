@@ -39,3 +39,6 @@ out/
 
 # Generated media (MCP server default output)
 generated-media/
+
+# Studio library (workspaces, elements, generated media)
+data/
