@@ -9,8 +9,6 @@ const DesignAgentStudio = dynamic(() => import('studio').then(mod => mod.DesignA
   ssr: false,
   loading: () => <div className="h-full w-full bg-black flex items-center justify-center text-white/20">Loading Design Studio...</div>
 });
-import GatewayStudio from './GatewayStudio';
-import CreativeLibrary from './CreativeLibrary';
 import { getCommonCopy, getLocaleConfig, localizeStudioPath } from '@/lib/locales';
 
 // Tab/category ids, icons, and English `label` fallbacks are stable
@@ -916,17 +914,8 @@ export default function StandaloneShell({ locale = 'en' }) {
 
         {/* Studio Content */}
         <div className="flex-1 min-h-0 h-full relative overflow-hidden bg-[#030303]">
-        <div className={activeTab === 'library' ? "h-full w-full" : "hidden"}>
-          <CreativeLibrary />
-        </div>
-        <div className={activeTab === 'image' ? "h-full w-full" : "hidden"}>
-          <GatewayStudio modality="image" />
-        </div>
         <div className={activeTab === 'layers' ? "h-full w-full" : "hidden"}>
           <LayersStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('layers')} onGenerationEnd={makeGenerationEndCallback('layers')} onGenerationComplete={makeSuccessCallback('layers')} onGenerationError={makeErrorCallback('layers')} />
-        </div>
-        <div className={activeTab === 'video' ? "h-full w-full" : "hidden"}>
-          <GatewayStudio modality="video" />
         </div>
         <div className={activeTab === 'clipping' ? "h-full w-full" : "hidden"}>
           <ClippingStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('clipping')} onGenerationEnd={makeGenerationEndCallback('clipping')} onGenerationComplete={makeSuccessCallback('clipping')} onGenerationError={makeErrorCallback('clipping')} />
@@ -945,9 +934,6 @@ export default function StandaloneShell({ locale = 'en' }) {
         </div>
         <div className={activeTab === 'cinema' ? "h-full w-full" : "hidden"}>
           <CinemaStudio apiKey={apiKey} locale={locale} onGenerationStart={makeGenerationStartCallback('cinema')} onGenerationEnd={makeGenerationEndCallback('cinema')} onGenerationComplete={makeSuccessCallback('cinema')} onGenerationError={makeErrorCallback('cinema')} />
-        </div>
-        <div className={activeTab === 'audio' ? "h-full w-full" : "hidden"}>
-          <GatewayStudio modality="audio" />
         </div>
         <div className={activeTab === 'marketing' ? "h-full w-full" : "hidden"}>
           <MarketingStudio apiKey={apiKey} locale={locale} droppedFiles={droppedFiles} onFilesHandled={handleFilesHandled} onGenerationStart={makeGenerationStartCallback('marketing')} onGenerationEnd={makeGenerationEndCallback('marketing')} onGenerationComplete={makeSuccessCallback('marketing')} onGenerationError={makeErrorCallback('marketing')} />
