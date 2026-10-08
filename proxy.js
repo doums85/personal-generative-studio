@@ -10,7 +10,7 @@ function addSecurityHeaders(response) {
   response.headers.set('Permissions-Policy', 'camera=(), geolocation=(), payment=(), usb=()');
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https://ai-gateway.vercel.sh https://*.vercel-storage.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com;",
+    "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https://ai-gateway.vercel.sh https://*.vercel-storage.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
   );
   return response;
 }

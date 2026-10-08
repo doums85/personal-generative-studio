@@ -36,15 +36,10 @@ npm run dev
 Fill these values in `.env.local`:
 
 - `AUTH_SECRET`: generate with `npx auth secret`.
-- `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`: Google OAuth credentials.
-- `ALLOWED_EMAILS`: exact comma-separated Google addresses allowed to enter.
+- `AUTH_PASSWORD_HASH`: scrypt hash of the owner's password. Run `node scripts/hash-password.mjs` to print a random password and its hash (or `node scripts/hash-password.mjs 'your password'` to hash your own); keep the password, store only the hash.
+- `ALLOWED_EMAILS`: the address allowed to sign in (a single owner address; comma-separated values are also accepted).
 - `AI_GATEWAY_API_KEY`: a Vercel AI Gateway key. Vercel OIDC may be used on linked deployments.
 - `STUDIO_PUBLIC_URL` (deployments only): public address used to serve reference media to URL-only video models.
-
-Google OAuth callback URLs:
-
-- local: `http://localhost:3000/api/auth/callback/google`
-- production: `https://YOUR_DOMAIN/api/auth/callback/google`
 
 ## Verification
 
