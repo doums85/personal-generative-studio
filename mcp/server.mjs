@@ -17,12 +17,16 @@ import { GenerationError, compatibleModels, loadGatewayCatalog, planGeneration, 
 import { formatEstimate } from '../lib/gateway/estimate.mjs';
 import { getModelPriceSummary } from '../lib/gateway/pricing.mjs';
 import { MEDIA_TYPE_BY_EXTENSION, saveGeneratedMedia } from '../lib/gateway/media-files.mjs';
+import { composePrompt } from '../lib/studio/prompt.mjs';
+import { trimReferences } from '../lib/studio/service.mjs';
+import { chooseVideoModelForSpeech, estimateSpeechSeconds, pickVideoDuration, withSpeechPrompt } from '../lib/studio/speech.mjs';
+import { StudioStore, resolveDataDir } from '../lib/studio/store.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CATALOG_TTL_MS = 15 * 60 * 1000;
 const MAX_REFERENCE_BYTES = 1_400_000;
 
-export const SERVER_INFO = { name: 'personal-generative-studio', version: '2.0.0' };
+export const SERVER_INFO = { name: 'personal-generative-studio', version: '2.1.0' };
 
 /** Loads .env.local / .env from the repository without overriding variables already set. */
 export function loadLocalEnv(root = REPO_ROOT, env = process.env) {
@@ -96,6 +100,8 @@ const modeSchema = z.enum(['economy', 'balanced', 'quality', 'manual']).optional
   .describe('Routing strategy when no model is given: economy (cheapest), balanced (default), quality (best). manual requires `model`.');
 const modelSchema = z.string().optional().describe('Exact Gateway model id from list_models, e.g. "google/imagen-4.0-generate". Omit for automatic routing.');
 const outputDirSchema = z.string().optional().describe('Directory for generated files (absolute, or relative to the current working directory). Defaults to STUDIO_OUTPUT_DIR or ./generated-media.');
+const workspaceSchema = z.string().optional().describe('Studio workspace id or name (see list_workspaces). Defaults to the most recently used workspace when `elements` is given.');
+const elementsSchema = z.array(z.string()).max(12).optional().describe('Element names or ids from the studio library (see list_elements). Their descriptions and reference images are injected, exactly like @mentions in the web app.');
 
 /**
  * Builds the MCP server. Dependencies are injectable so tests never call a provider.
@@ -107,14 +113,45 @@ export function createStudioServer({
   cwd = process.cwd(),
   env = process.env,
   now = () => new Date(),
+  store = new StudioStore({ rootDir: resolveDataDir(env, REPO_ROOT) }),
 } = {}) {
   const server = new McpServer(SERVER_INFO, {
     instructions: [
       'Personal Generative Studio generates images, videos and speech through Vercel AI Gateway and saves the files to disk.',
       'Call list_models to discover model ids and prices, estimate_cost to preview spending, then generate_image, generate_video or generate_speech.',
+      'The studio library is shared with the web app: list_workspaces and list_elements expose reusable characters, avatars, places and products; pass `elements` (names or ids) to a generate tool to keep them consistent.',
       'Every generation returns the absolute file paths written; read or reuse them directly.',
     ].join(' '),
   });
+
+  async function resolveWorkspace(reference) {
+    const workspaces = await store.listWorkspaces();
+    if (!workspaces.length) throw new GenerationError('The studio library has no workspace yet; create one in the web app first.', { status: 404, code: 'workspace_not_found' });
+    if (!reference) return workspaces[0];
+    const needle = reference.trim().toLowerCase();
+    const workspace = workspaces.find((item) => item.id === reference) || workspaces.find((item) => item.name.toLowerCase() === needle);
+    if (!workspace) throw new GenerationError(`Workspace "${reference}" not found`, { status: 404, code: 'workspace_not_found' });
+    return workspace;
+  }
+
+  /** Resolves element names/ids into a composed prompt plus reference data URLs. */
+  async function applyElements({ prompt, workspace: workspaceReference, elements: requested = [], model }) {
+    if (!requested.length && !/@[\p{L}\p{N}]/u.test(prompt)) return { prompt, referenceImages: [], elementIds: [], warnings: [] };
+    const workspace = await resolveWorkspace(workspaceReference);
+    const elements = await store.listElements(workspace.id);
+    const selectedIds = [];
+    for (const reference of requested) {
+      const needle = reference.trim().toLowerCase();
+      const element = elements.find((item) => item.id === reference) || elements.find((item) => item.name.toLowerCase() === needle);
+      if (!element) throw new GenerationError(`Element "${reference}" not found in workspace "${workspace.name}"`, { status: 404, code: 'element_not_found' });
+      selectedIds.push(element.id);
+    }
+    const composed = composePrompt({ prompt, elements, selectedIds, styleNotes: workspace.settings?.styleNotes });
+    const warnings = [];
+    const files = model ? trimReferences(model, composed.referenceFiles, warnings) : composed.referenceFiles;
+    const referenceImages = await Promise.all(files.map((image) => store.mediaAsDataUrl(workspace.id, image.file)));
+    return { prompt: composed.text, referenceImages, elementIds: composed.elementIds, warnings, workspace };
+  }
 
   let catalogCache = null;
   async function getCatalog() {
@@ -128,10 +165,13 @@ export function createStudioServer({
     return requested ? path.resolve(cwd, requested) : (outputDir || defaultOutputDir(env, cwd));
   }
 
-  async function runAndSave(rawInput, requestedOutputDir) {
+  async function runAndSave(rawInput, requestedOutputDir, { workspace, elements } = {}) {
     const catalog = await getCatalog();
-    const plan = planGeneration(catalog, rawInput);
+    const preliminary = planGeneration(catalog, { ...rawInput, referenceImages: [] });
+    const applied = await applyElements({ prompt: rawInput.prompt, workspace, elements, model: preliminary.model });
+    const plan = planGeneration(catalog, { ...rawInput, prompt: applied.prompt, referenceImages: [...applied.referenceImages, ...(rawInput.referenceImages || [])] });
     const result = await runGeneration(plan, { generators, tags: ['surface:mcp'] });
+    result.warnings = [...applied.warnings, ...(result.warnings || [])];
     const saved = await saveGeneratedMedia({
       outputDir: resolveOutputDir(requestedOutputDir),
       modality: plan.input.modality,
@@ -151,6 +191,7 @@ export function createStudioServer({
       `Manifest: ${saved.manifestPath}`,
       `Estimated cost: ${formatEstimate(result.estimate)}`,
     ];
+    if (applied.elementIds.length) lines.push(`Elements: ${applied.elementIds.length} injected from workspace "${applied.workspace.name}".`);
     if (result.warnings?.length) lines.push(`Warnings: ${result.warnings.map(formatWarning).join('; ')}`);
     return {
       content: [{ type: 'text', text: lines.join('\n') }],
@@ -160,9 +201,51 @@ export function createStudioServer({
         manifest: saved.manifestPath,
         estimate: result.estimate,
         warnings: result.warnings,
+        elementIds: applied.elementIds,
       },
     };
   }
+
+  server.registerTool('list_workspaces', {
+    title: 'List studio workspaces',
+    description: 'Lists the projects (workspaces) of the studio library with their element and generation counts.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true },
+  }, async () => {
+    try {
+      const workspaces = await Promise.all((await store.listWorkspaces()).map((workspace) => store.workspaceSummary(workspace.id)));
+      const text = workspaces.length
+        ? workspaces.map((item) => `- ${item.name} (${item.id}) · ${item.counts.elements} element(s) · ${item.counts.generations} generation(s)${item.settings?.styleNotes ? ` · style: ${item.settings.styleNotes}` : ''}`).join('\n')
+        : 'No workspace yet. Create one in the web app.';
+      return { content: [{ type: 'text', text }], structuredContent: { workspaces: workspaces.map(({ id, name, description, settings, counts }) => ({ id, name, description, settings, counts })) } };
+    } catch (error) {
+      return errorResult(error);
+    }
+  });
+
+  server.registerTool('list_elements', {
+    title: 'List studio elements',
+    description: 'Lists the reusable elements (characters, avatars, places, objects, products, styles) of a workspace, with their descriptions and reference image paths.',
+    inputSchema: {
+      workspace: workspaceSchema,
+      kind: z.enum(['character', 'avatar', 'place', 'object', 'product', 'style']).optional(),
+    },
+    annotations: { readOnlyHint: true },
+  }, async ({ workspace: workspaceReference, kind }) => {
+    try {
+      const workspace = await resolveWorkspace(workspaceReference);
+      const elements = await store.listElements(workspace.id, { kind });
+      const text = elements.length
+        ? `Workspace "${workspace.name}"\n${elements.map((element) => `- ${element.name} [${element.kind}] (${element.id}) · ${element.images.length} image(s)${element.description ? ` · ${element.description}` : ''}`).join('\n')}`
+        : `Workspace "${workspace.name}" has no element yet.`;
+      return {
+        content: [{ type: 'text', text }],
+        structuredContent: { workspace: { id: workspace.id, name: workspace.name }, elements: elements.map((element) => ({ id: element.id, kind: element.kind, name: element.name, description: element.description, voice: element.voice || null, images: element.images.map((image) => store.mediaPath(workspace.id, image.file)) })) },
+      };
+    } catch (error) {
+      return errorResult(error);
+    }
+  });
 
   server.registerTool('list_models', {
     title: 'List Gateway models',
@@ -233,14 +316,16 @@ export function createStudioServer({
       size: z.string().regex(/^\d{2,5}x\d{2,5}$/).optional().describe('Explicit pixel size such as 1024x1024 (model dependent)'),
       seed: z.number().int().optional(),
       count: z.number().int().min(1).max(4).optional().describe('Number of images (default 1)'),
-      referenceImages: z.array(z.string()).max(3).optional().describe('Up to 3 local image paths used as references (image-to-image, style or character continuity)'),
+      referenceImages: z.array(z.string()).max(6).optional().describe('Up to 6 local image paths used as references (image-to-image, style or character continuity)'),
+      workspace: workspaceSchema,
+      elements: elementsSchema,
       outputDir: outputDirSchema,
     },
     annotations: { destructiveHint: false, openWorldHint: true },
-  }, async ({ referenceImages = [], outputDir: requestedOutputDir, ...args }) => {
+  }, async ({ referenceImages = [], workspace, elements, outputDir: requestedOutputDir, ...args }) => {
     try {
       const references = await Promise.all(referenceImages.map((file) => readReferenceImage(file, cwd)));
-      return await runAndSave({ modality: 'image', ...args, referenceImages: references }, requestedOutputDir);
+      return await runAndSave({ modality: 'image', ...args, referenceImages: references }, requestedOutputDir, { workspace, elements });
     } catch (error) {
       return errorResult(error);
     }
@@ -248,24 +333,40 @@ export function createStudioServer({
 
   server.registerTool('generate_video', {
     title: 'Generate video',
-    description: 'Generates a video from a prompt (text-to-video) or from a reference image (image-to-video) and writes it to disk. Video generations can take several minutes.',
+    description: 'Generates a video from a prompt (text-to-video), from a first frame (image-to-video) or with studio elements as references, optionally with a spoken dialogue synchronized to the lips, and writes it to disk. Video generations can take several minutes.',
     inputSchema: {
       prompt: z.string().min(1).max(8000).describe('Scene, motion and camera description'),
       model: modelSchema,
       mode: modeSchema,
       aspectRatio: z.string().regex(/^\d{1,2}:\d{1,2}$/).optional().describe('e.g. 16:9, 9:16'),
-      resolution: z.string().regex(/^\d{2,5}x\d{2,5}$/).optional().describe('e.g. 1280x720 (model dependent)'),
+      resolution: z.string().regex(/^(\d{2,5}x\d{2,5}|\d{3,4}p|2k|4k)$/i).optional().describe('e.g. 720p, 1080p or 1280x720 (model dependent)'),
       duration: z.number().int().min(1).max(30).optional().describe('Duration in seconds (model dependent)'),
       seed: z.number().int().optional(),
       generateAudio: z.boolean().optional().describe('Ask the model for native audio when supported'),
-      referenceImage: z.string().optional().describe('Local image path used as the first frame / reference'),
+      referenceImage: z.string().optional().describe('Local image path used as the first frame (image-to-video)'),
+      referenceImages: z.array(z.string()).max(6).optional().describe('Local image paths used as identity/style references (reference-to-video models)'),
+      dialogue: z.string().max(4000).optional().describe('Spoken text: the video is generated with lips synchronized to this dialogue (native audio; requires a model with native audio such as Veo 3, Kling, Grok Imagine or Seedance 1.5)'),
+      dialogueLanguage: z.string().max(8).optional().describe('ISO 639-1 language of the dialogue (default fr)'),
+      workspace: workspaceSchema,
+      elements: elementsSchema,
       outputDir: outputDirSchema,
     },
     annotations: { destructiveHint: false, openWorldHint: true },
-  }, async ({ referenceImage, outputDir: requestedOutputDir, ...args }) => {
+  }, async ({ referenceImage, referenceImages = [], dialogue, dialogueLanguage, workspace, elements, outputDir: requestedOutputDir, ...args }) => {
     try {
-      const references = referenceImage ? [await readReferenceImage(referenceImage, cwd)] : [];
-      return await runAndSave({ modality: 'video', ...args, referenceImages: references }, requestedOutputDir);
+      const startImage = referenceImage ? await readReferenceImage(referenceImage, cwd) : undefined;
+      const references = await Promise.all(referenceImages.map((file) => readReferenceImage(file, cwd)));
+      const input = { modality: 'video', ...args, startImage, referenceImages: references };
+      if (dialogue) {
+        const catalog = await getCatalog();
+        const model = chooseVideoModelForSpeech(catalog, { mode: 'native', requested: args.model, videoMode: args.mode === 'manual' ? 'balanced' : args.mode || 'balanced', needsStartImage: Boolean(startImage) });
+        input.model = model.id;
+        input.mode = 'manual';
+        input.generateAudio = true;
+        input.duration = pickVideoDuration(model, estimateSpeechSeconds(dialogue), args.duration);
+        input.prompt = withSpeechPrompt(args.prompt, { script: dialogue, language: dialogueLanguage || 'fr', mode: 'native' });
+      }
+      return await runAndSave(input, requestedOutputDir, { workspace, elements });
     } catch (error) {
       return errorResult(error);
     }
@@ -278,7 +379,9 @@ export function createStudioServer({
       text: z.string().min(1).max(8000).describe('Text to speak'),
       model: modelSchema,
       mode: modeSchema,
-      voice: z.string().max(80).optional().describe('Voice name supported by the model (default alloy)'),
+      voice: z.string().max(80).optional().describe('Voice name supported by the model (defaults per provider: alloy, Kore, Ara)'),
+      instructions: z.string().max(2000).optional().describe('Tone or acting instructions when the model supports them'),
+      language: z.string().max(8).optional().describe('ISO 639-1 language code, e.g. fr'),
       outputFormat: z.string().max(20).optional().describe('mp3, wav… when the model supports it'),
       outputDir: outputDirSchema,
     },

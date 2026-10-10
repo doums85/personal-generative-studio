@@ -18,19 +18,31 @@ export default async function LoginPage({ searchParams }) {
         </p>
         {params?.error && (
           <p className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
-            Ce compte Google n’est pas autorisé à accéder au studio.
+            Adresse e-mail ou mot de passe incorrect.
           </p>
         )}
-        <form className="mt-8" action={async () => {
+        <form className="mt-8 space-y-4" action={async (formData) => {
           'use server';
-          await signIn('google', { redirectTo: '/studio' });
+          await signIn('credentials', {
+            email: formData.get('email'),
+            password: formData.get('password'),
+            redirectTo: '/studio',
+          });
         }}>
+          <label className="block text-sm text-white/70">
+            Adresse e-mail
+            <input name="email" type="email" required autoComplete="username" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none focus:border-cyan-300/60" />
+          </label>
+          <label className="block text-sm text-white/70">
+            Mot de passe
+            <input name="password" type="password" required autoComplete="current-password" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none focus:border-cyan-300/60" />
+          </label>
           <button type="submit" className="w-full rounded-xl bg-white px-4 py-3 font-semibold text-black transition hover:bg-cyan-100">
-            Continuer avec Google
+            Se connecter
           </button>
         </form>
         <p className="mt-5 text-center text-xs text-white/35">
-          L’accès est limité à l’adresse configurée par le propriétaire.
+          L’accès est limité à l’adresse du propriétaire.
         </p>
       </section>
     </main>
