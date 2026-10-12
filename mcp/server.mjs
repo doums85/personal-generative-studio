@@ -11,7 +11,6 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { GenerationError, compatibleModels, loadGatewayCatalog, planGeneration, runGeneration } from '../lib/gateway/engine.mjs';
 import { formatEstimate } from '../lib/gateway/estimate.mjs';
@@ -105,6 +104,10 @@ const elementsSchema = z.array(z.string()).max(12).optional().describe('Element 
 
 /**
  * Builds the MCP server. Dependencies are injectable so tests never call a provider.
+ *
+ * `remote` switches the server to hosted mode (HTTP transport): the client has no access to this
+ * machine's disk, so local paths are refused and `remote.publish({ modality, prompt, media, manifest, now })`
+ * stores each generation and returns `{ files: [{ url, mediaType, bytes }], manifestUrl }` for the tools to report.
  */
 export function createStudioServer({
   loadCatalog = loadGatewayCatalog,
@@ -114,13 +117,18 @@ export function createStudioServer({
   env = process.env,
   now = () => new Date(),
   store = new StudioStore({ rootDir: resolveDataDir(env, REPO_ROOT) }),
+  remote = null,
 } = {}) {
   const server = new McpServer(SERVER_INFO, {
     instructions: [
-      'Personal Generative Studio generates images, videos and speech through Vercel AI Gateway and saves the files to disk.',
+      remote
+        ? 'Personal Generative Studio generates images, videos and speech through Vercel AI Gateway and hosts the files for download.'
+        : 'Personal Generative Studio generates images, videos and speech through Vercel AI Gateway and saves the files to disk.',
       'Call list_models to discover model ids and prices, estimate_cost to preview spending, then generate_image, generate_video or generate_speech.',
       'The studio library is shared with the web app: list_workspaces and list_elements expose reusable characters, avatars, places and products; pass `elements` (names or ids) to a generate tool to keep them consistent.',
-      'Every generation returns the absolute file paths written; read or reuse them directly.',
+      remote
+        ? 'Every generation returns download URLs for the files; share or fetch those links.'
+        : 'Every generation returns the absolute file paths written; read or reuse them directly.',
     ].join(' '),
   });
 
@@ -172,8 +180,7 @@ export function createStudioServer({
     const plan = planGeneration(catalog, { ...rawInput, prompt: applied.prompt, referenceImages: [...applied.referenceImages, ...(rawInput.referenceImages || [])] });
     const result = await runGeneration(plan, { generators, tags: ['surface:mcp'] });
     result.warnings = [...applied.warnings, ...(result.warnings || [])];
-    const saved = await saveGeneratedMedia({
-      outputDir: resolveOutputDir(requestedOutputDir),
+    const saveOptions = {
       modality: plan.input.modality,
       prompt: plan.input.prompt,
       media: result.media,
@@ -184,11 +191,19 @@ export function createStudioServer({
         estimate: result.estimate,
         warnings: result.warnings,
       },
-    });
+    };
+    // Hosted mode publishes the media and returns download URLs; local mode returns absolute file paths.
+    const published = remote
+      ? await remote.publish(saveOptions)
+      : await saveGeneratedMedia({ ...saveOptions, outputDir: resolveOutputDir(requestedOutputDir) });
+    const saved = {
+      files: published.files.map((file) => ({ location: file.url || file.path, mediaType: file.mediaType, bytes: file.bytes })),
+      manifest: published.manifestUrl || published.manifestPath,
+    };
     const lines = [
       `Generated ${saved.files.length} ${plan.input.modality} file(s) with ${result.model.id}.`,
-      ...saved.files.map((file) => `- ${file.path} (${file.mediaType}, ${file.bytes} bytes)`),
-      `Manifest: ${saved.manifestPath}`,
+      ...saved.files.map((file) => `- ${file.location} (${file.mediaType}, ${file.bytes} bytes)`),
+      `Manifest: ${saved.manifest}`,
       `Estimated cost: ${formatEstimate(result.estimate)}`,
     ];
     if (applied.elementIds.length) lines.push(`Elements: ${applied.elementIds.length} injected from workspace "${applied.workspace.name}".`);
@@ -197,8 +212,8 @@ export function createStudioServer({
       content: [{ type: 'text', text: lines.join('\n') }],
       structuredContent: {
         model: result.model.id,
-        files: saved.files.map((file) => file.path),
-        manifest: saved.manifestPath,
+        files: saved.files.map((file) => file.location),
+        manifest: saved.manifest,
         estimate: result.estimate,
         warnings: result.warnings,
         elementIds: applied.elementIds,
@@ -316,10 +331,12 @@ export function createStudioServer({
       size: z.string().regex(/^\d{2,5}x\d{2,5}$/).optional().describe('Explicit pixel size such as 1024x1024 (model dependent)'),
       seed: z.number().int().optional(),
       count: z.number().int().min(1).max(4).optional().describe('Number of images (default 1)'),
-      referenceImages: z.array(z.string()).max(6).optional().describe('Up to 6 local image paths used as references (image-to-image, style or character continuity)'),
+      ...(remote ? {} : {
+        referenceImages: z.array(z.string()).max(6).optional().describe('Up to 6 local image paths used as references (image-to-image, style or character continuity)'),
+        outputDir: outputDirSchema,
+      }),
       workspace: workspaceSchema,
       elements: elementsSchema,
-      outputDir: outputDirSchema,
     },
     annotations: { destructiveHint: false, openWorldHint: true },
   }, async ({ referenceImages = [], workspace, elements, outputDir: requestedOutputDir, ...args }) => {
@@ -343,13 +360,15 @@ export function createStudioServer({
       duration: z.number().int().min(1).max(30).optional().describe('Duration in seconds (model dependent)'),
       seed: z.number().int().optional(),
       generateAudio: z.boolean().optional().describe('Ask the model for native audio when supported'),
-      referenceImage: z.string().optional().describe('Local image path used as the first frame (image-to-video)'),
-      referenceImages: z.array(z.string()).max(6).optional().describe('Local image paths used as identity/style references (reference-to-video models)'),
+      ...(remote ? {} : {
+        referenceImage: z.string().optional().describe('Local image path used as the first frame (image-to-video)'),
+        referenceImages: z.array(z.string()).max(6).optional().describe('Local image paths used as identity/style references (reference-to-video models)'),
+      }),
       dialogue: z.string().max(4000).optional().describe('Spoken text: the video is generated with lips synchronized to this dialogue (native audio; requires a model with native audio such as Veo 3, Kling, Grok Imagine or Seedance 1.5)'),
       dialogueLanguage: z.string().max(8).optional().describe('ISO 639-1 language of the dialogue (default fr)'),
       workspace: workspaceSchema,
       elements: elementsSchema,
-      outputDir: outputDirSchema,
+      ...(remote ? {} : { outputDir: outputDirSchema }),
     },
     annotations: { destructiveHint: false, openWorldHint: true },
   }, async ({ referenceImage, referenceImages = [], dialogue, dialogueLanguage, workspace, elements, outputDir: requestedOutputDir, ...args }) => {
@@ -383,7 +402,7 @@ export function createStudioServer({
       instructions: z.string().max(2000).optional().describe('Tone or acting instructions when the model supports them'),
       language: z.string().max(8).optional().describe('ISO 639-1 language code, e.g. fr'),
       outputFormat: z.string().max(20).optional().describe('mp3, wav… when the model supports it'),
-      outputDir: outputDirSchema,
+      ...(remote ? {} : { outputDir: outputDirSchema }),
     },
     annotations: { destructiveHint: false, openWorldHint: true },
   }, async ({ text, outputDir: requestedOutputDir, ...args }) => {
@@ -402,6 +421,7 @@ export async function main() {
   if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
     console.error('[personal-generative-studio] AI_GATEWAY_API_KEY is not set; generation calls will fail until it is configured.');
   }
+  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
   const server = createStudioServer();
   await server.connect(new StdioServerTransport());
 }

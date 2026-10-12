@@ -16,7 +16,8 @@ function addSecurityHeaders(response) {
 }
 
 function isPublicPath(pathname) {
-  return pathname === '/login' || pathname.startsWith('/api/auth/');
+  // /api/mcp authenticates itself with MCP_AUTH_TOKEN (remote MCP clients have no owner session).
+  return pathname === '/login' || pathname.startsWith('/api/auth/') || pathname === '/api/mcp' || pathname.startsWith('/api/mcp/');
 }
 
 export default auth((request) => {
