@@ -1,0 +1,23 @@
+# Hosted MCP server (Streamable HTTP) for Claude Cloud connectors.
+# Lightweight image: only the MCP server and the generation engine, not the Next.js app.
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN npm init -y >/dev/null \
+  && npm install --omit=dev --no-audit --no-fund \
+    @modelcontextprotocol/sdk@^1.30.1 \
+    ai@^6.0.281 \
+    @ai-sdk/gateway@^3.0.192 \
+    zod@^4.6.2
+
+COPY mcp ./mcp
+COPY lib ./lib
+
+# Persistent volume: generated media (MCP_FILES_DIR) and the studio library (STUDIO_DATA_DIR).
+ENV MCP_FILES_DIR=/data/files
+ENV STUDIO_DATA_DIR=/data/library
+VOLUME ["/data"]
+
+EXPOSE 3333
+CMD ["node", "mcp/http.mjs"]

@@ -91,6 +91,56 @@ Configuration:
 
 Each generation writes the media files plus a JSON manifest (prompt, model, estimate, warnings) next to them, so a project keeps its own history of generated assets.
 
+### Claude Cloud (hosted, Streamable HTTP)
+
+Claude Cloud cannot start a process on your machine, so the studio also exposes the MCP tools over Streamable HTTP. They are the same tools; instead of disk paths, each generation returns download links, and local `outputDir` / reference-image paths are not offered.
+
+There are two ways to host it.
+
+#### On Vercel (same project as the web app)
+
+The Next.js app serves the MCP endpoint at `/api/mcp` (stateless, `maxDuration` 300 s). Generated media is uploaded to a public Vercel Blob store; the links carry a random suffix and cannot be guessed.
+
+1. In the Vercel project, create a Blob store (Storage → Blob). This sets `BLOB_READ_WRITE_TOKEN` automatically.
+2. Add the environment variable `MCP_AUTH_TOKEN` (`openssl rand -hex 32`) and deploy.
+3. Register the endpoint:
+
+```bash
+claude mcp add --transport http studio https://<your-project>.vercel.app/api/mcp --header "Authorization: Bearer $MCP_AUTH_TOKEN"
+```
+
+For claude.ai (Settings → Connectors → Add custom connector), which cannot send a custom header, put the token in the URL: `https://<your-project>.vercel.app/api/mcp/<MCP_AUTH_TOKEN>`. Treat that URL as a secret.
+
+The studio library (workspaces and elements) lives on the function's ephemeral disk on Vercel, so `list_workspaces`, `list_elements` and the `elements` argument only see data that exists there. Use the Docker option below if you need a persistent library. Long video generations need a plan that allows 300 s functions.
+
+#### On a Node host with a disk (Docker, Fly, Railway…)
+
+`mcp/http.mjs` is a standalone HTTP server that stores files on disk and serves them at `/files/<random id>/<name>`. Run it locally or on any Node host:
+
+```bash
+MCP_AUTH_TOKEN=$(openssl rand -hex 32) MCP_PUBLIC_URL=https://studio-mcp.example.com npm run mcp:http
+```
+
+Or build the lightweight image (`Dockerfile.mcp`) and mount a persistent volume on `/data`:
+
+```bash
+docker build -f Dockerfile.mcp -t studio-mcp .
+docker run -d -p 3333:3333 -v studio-mcp-data:/data \
+  -e AI_GATEWAY_API_KEY=... -e MCP_AUTH_TOKEN=... -e MCP_PUBLIC_URL=https://studio-mcp.example.com \
+  studio-mcp
+```
+
+Put it behind HTTPS (reverse proxy, Fly, Railway, Render…), then register it:
+
+```bash
+# Claude Code (bearer header)
+claude mcp add --transport http studio https://studio-mcp.example.com/mcp --header "Authorization: Bearer $MCP_AUTH_TOKEN"
+```
+
+For claude.ai, use `https://studio-mcp.example.com/mcp/<MCP_AUTH_TOKEN>`.
+
+Variables of the standalone server: `MCP_AUTH_TOKEN` (required, 24+ characters), `MCP_PUBLIC_URL` (public base URL used in download links), `MCP_FILES_DIR` (default `./generated-media`), `PORT` (default 3333), plus `AI_GATEWAY_API_KEY`, `MAX_GENERATION_COST_USD` and `STUDIO_DATA_DIR` as above. Anyone holding the token can spend your Gateway credits, so set `MAX_GENERATION_COST_USD`.
+
 ## Deployment
 
 Deploy the Next.js application to Vercel, configure the environment variables above, and enable AI Gateway for the linked project. Long video generations use a five-minute function duration and therefore require a compatible Vercel plan and model. Set `STUDIO_PUBLIC_URL` to the deployment address so URL-only video models can fetch reference images and voice tracks.
