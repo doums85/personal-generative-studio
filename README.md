@@ -99,9 +99,9 @@ There are two ways to host it.
 
 #### On Vercel (same project as the web app)
 
-The Next.js app serves the MCP endpoint at `/api/mcp` (stateless, `maxDuration` 300 s). Generated media is uploaded to a public Vercel Blob store; the links carry a random suffix and cannot be guessed.
+The Next.js app serves the MCP endpoint at `/api/mcp` (stateless, `maxDuration` 300 s). Generated media is uploaded to the public Vercel Blob store identified by `BLOB_READ_WRITE_TOKEN`; the links carry a random suffix and cannot be guessed. A private store is not supported (Claude could not download its links).
 
-1. In the Vercel project, create a Blob store (Storage → Blob). This sets `BLOB_READ_WRITE_TOKEN` automatically.
+1. In the Vercel project, create a **public** Blob store (Storage → Blob, or `vercel blob create-store <name> --access public -e production`). This sets `BLOB_READ_WRITE_TOKEN` automatically.
 2. Add the environment variable `MCP_AUTH_TOKEN` (`openssl rand -hex 32`) and deploy.
 3. Register the endpoint:
 

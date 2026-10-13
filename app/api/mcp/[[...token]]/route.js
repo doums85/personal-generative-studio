@@ -17,7 +17,8 @@ async function handle(request, context) {
   return handleMcpRequest(request, {
     authToken: process.env.MCP_AUTH_TOKEN,
     pathToken: token[0],
-    remote: { publish: createBlobPublisher() },
+    // An explicit token wins over the OIDC credentials of any other Blob store connected to the project.
+    remote: { publish: createBlobPublisher({ token: process.env.BLOB_READ_WRITE_TOKEN }) },
     store: getStudioStore(),
     loadCatalog: () => loadGatewayCatalog({ fetchOptions: { next: { revalidate: 900 } } }),
   });
