@@ -84,7 +84,7 @@ test('the MCP server exposes discovery, estimation and generation tools', async 
 
   try {
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((tool) => tool.name).sort(), ['estimate_cost', 'generate_image', 'generate_speech', 'generate_video', 'list_elements', 'list_models', 'list_workspaces']);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ['estimate_cost', 'generate_image', 'generate_speech', 'generate_video', 'list_elements', 'list_generations', 'list_models', 'list_publications', 'list_social_accounts', 'list_workspaces', 'publish_to_social']);
 
     const listed = await client.callTool({ name: 'list_models', arguments: { modality: 'image', search: 'fast' } });
     assert.equal(listed.isError, undefined);

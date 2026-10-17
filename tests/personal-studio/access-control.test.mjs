@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isAllowedEmail, isAllowedSession, isLocalPreview, parseAllowedEmails } from '../../lib/access-control.mjs';
+import { isAllowedEmail, isAllowedSession, isLocalPreview, isPublicPath, parseAllowedEmails } from '../../lib/access-control.mjs';
 
 test('parses a normalized exact-email allowlist', () => {
   assert.deepEqual([...parseAllowedEmails(' Owner@Example.com, second@example.com, ')], ['owner@example.com', 'second@example.com']);
@@ -32,4 +32,13 @@ test('hashes and verifies passwords without storing them', async () => {
   assert.equal(verifyPassword(password, ''), false);
   assert.equal(verifyPassword(password, 'scrypt.bad'), false);
   assert.throws(() => hashPassword('short'));
+});
+
+test('only self-authenticating endpoints are reachable without a session', () => {
+  for (const pathname of ['/login', '/api/auth/callback/credentials', '/api/mcp', '/api/mcp/some-token', '/api/studio/social/run-due', '/api/studio/public/0123abcd/workspace-id/media.png']) {
+    assert.equal(isPublicPath(pathname), true, pathname);
+  }
+  for (const pathname of ['/', '/studio', '/studio/social', '/api/studio/workspaces', '/api/studio/workspaces/w1/media/a.png', '/api/studio/social/callback/meta', '/api/studio/social/run-due/extra', '/api/studio/publicity', '/api/studio/config', '/api/gateway/generate']) {
+    assert.equal(isPublicPath(pathname), false, pathname);
+  }
 });

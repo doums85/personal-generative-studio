@@ -10,13 +10,14 @@ import CreateView from './CreateView';
 import VoiceView from './VoiceView';
 import ElementsView from './ElementsView';
 import GalleryView from './GalleryView';
+import SocialView from './SocialView';
 import { STUDIO_VIEWS } from '@/lib/studio/views';
 import { Icon, Notice, Spinner, cx } from './ui';
 
 
 const NAV = [
   { title: 'Créer', items: ['image', 'video', 'voice'] },
-  { title: 'Projet', items: ['elements', 'gallery'] },
+  { title: 'Projet', items: ['elements', 'gallery', 'social'] },
 ];
 
 const LEGACY_TOOLS = [
@@ -142,6 +143,7 @@ function Frame({ view }) {
       voice: <VoiceView key={`voice-${workspace.id}`} navigate={navigate} />,
       elements: <ElementsView key={`elements-${workspace.id}`} navigate={navigate} />,
       gallery: <GalleryView key={`gallery-${workspace.id}`} navigate={navigate} />,
+      social: <SocialView key={`social-${workspace.id}`} />,
     }[view] || <HomeView navigate={navigate} />;
   }
 

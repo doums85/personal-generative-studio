@@ -68,6 +68,32 @@ Everything lives on disk under `STUDIO_DATA_DIR` (default `./data`, ignored by g
 
 Several video providers only accept `url` inputs for images and audio (the catalog publishes this per model). When `STUDIO_PUBLIC_URL` points to the public address of the deployment, the studio serves those files through signed links (`/api/studio/public/<token>/…`, HMAC signed with `STUDIO_MEDIA_SECRET` or `AUTH_SECRET`). Without it, the studio refuses those combinations before any paid call and suggests a model that accepts base64 inputs or the native-voice method.
 
+### Publishing to social networks
+
+Each workspace has its own connected accounts: open **Réseaux sociaux** in the sidebar to connect them, then open any image or video in the gallery and choose **Publier**. A project only ever publishes to the accounts connected to it, and deleting a project forgets its accounts.
+
+| Network | What is published | Credentials |
+| --- | --- | --- |
+| Facebook Pages | photo or video on the Page | `META_APP_ID`, `META_APP_SECRET` |
+| Instagram (professional account linked to a Page) | feed image, or Reel for videos | same Meta app |
+| TikTok | video or photo, published directly or sent to the TikTok app as a draft | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` |
+
+Setup, once per network:
+
+1. **Meta** (developers.facebook.com): create an app with *Facebook Login*, add the redirect URI shown on the *Réseaux sociaux* screen (`<STUDIO_PUBLIC_URL>/api/studio/social/callback/meta`) and request `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `instagram_basic`, `instagram_content_publish` (and `business_management` for Pages owned through a Business portfolio). Until the app passes App Review, only the app's own admins and testers can connect. Override the requested scopes with `META_SCOPES` and the API version with `META_GRAPH_VERSION`.
+2. **TikTok** (developers.tiktok.com): create an app with *Login Kit* and *Content Posting API* (scopes `user.info.basic`, `video.publish`, `video.upload`), add the redirect URI (`…/callback/tiktok`) and verify the URL prefix `<STUDIO_PUBLIC_URL>/api/studio/public/` under *URL properties*: TikTok downloads the media from it. Until TikTok audits the app, direct posts are limited to the *Moi uniquement* visibility; *Envoyer en brouillon* works regardless.
+3. Set `STUDIO_PUBLIC_URL` (public https address) and `STUDIO_MEDIA_SECRET`: the networks fetch the media from your server through the signed links described above. Images are re-encoded as JPEG on the fly (`?format=jpeg`) because Instagram and TikTok refuse PNG.
+4. Set `SOCIAL_TOKEN_SECRET` (falls back to `AUTH_SECRET`): access and refresh tokens are encrypted with it (AES-256-GCM) before being written next to the workspace, in `social-accounts.json`. Changing the secret makes stored tokens unreadable: reconnect the accounts.
+
+**Scheduling.** In the *Publier* window choose *Programmer* and pick a date and time (your browser's local time; between one minute and one year ahead). Nothing is sent until then: the publication waits as *Programmé* in the history, where it can be cancelled. Two things send it:
+
+- on a **long-running server** (Docker, `npm start`, a VPS) a built-in ticker checks every minute — nothing to configure; set `SOCIAL_SCHEDULER=off` to disable it;
+- on **Vercel** or any serverless host there is no resident process, so set `CRON_SECRET` and have a cron call `GET /api/studio/social/run-due` every minute with `Authorization: Bearer <CRON_SECRET>` (Vercel Cron sends this header itself; a per-minute schedule needs a plan that allows it). The *Réseaux sociaux* screen warns when scheduled posts have no way to leave.
+
+The same tick also finishes Reels and TikTok uploads still being processed, so a scheduled post completes with nobody looking. The scheduler assumes a single instance: run one server per data directory. If the server was down at the scheduled time, the post goes out as soon as it is back. A scheduled post whose account was disconnected or lost its authorisation is marked *Échec* with the reason rather than silently dropped; it is not retried.
+
+Instagram and TikTok process media on their side, so a publication starts as *Traitement…* and the studio follows it until the post is live (or explains why the network refused it). TikTok sessions are renewed automatically; an account whose authorisation was revoked is flagged *À reconnecter*. Publications are kept in `publications.json` of the workspace.
+
 The advanced upstream studios (Layers, Cinema, Clipping, Motion Control, Marketing, Workflows, Agents, Design Agent) remain available from the sidebar and still use the MuAPI key.
 
 ## Claude Code and other MCP clients
@@ -90,6 +116,18 @@ Configuration:
 - `STUDIO_DATA_DIR` points to the studio library shared with the web app (default `./data` in this repository).
 
 Each generation writes the media files plus a JSON manifest (prompt, model, estimate, warnings) next to them, so a project keeps its own history of generated assets.
+
+### Publishing from Claude
+
+Four more tools let an agent post what it generates to the accounts connected to a workspace (see *Publishing to social networks*): `list_social_accounts`, `list_generations` (gallery ids), `publish_to_social` and `list_publications`.
+
+- `publish_to_social` takes `accounts` (ids, `instagram`, `instagram:Name` or `@handle`), a `caption`, and exactly one media source: `file` (local path, typically the file `generate_image` just wrote; stdio only), `url` (a link returned by `generate_*` on the hosted endpoint) or `generation` (gallery id). Imported media is added to the workspace gallery. Optional: `scheduledAt` (ISO 8601 with offset), `aspectRatio` (so the Instagram/TikTok format checks apply to imported files), `tiktokMode` (`publish` or `draft`) and `tiktokPrivacy` (default `SELF_ONLY`).
+- It posts publicly and cannot be undone from the tool, so its description tells the model to publish only on explicit request and to run it with `dryRun: true` first (reports format and caption problems per account without importing or sending anything).
+- Instagram and TikTok finish processing on their side; the result then says *processing* and `list_publications` checks with the platform and reports the final state or link.
+
+Requirements: the MCP server must see the same `STUDIO_DATA_DIR` as the web app (that is where the accounts live), plus `SOCIAL_TOKEN_SECRET`/`AUTH_SECRET` to decrypt the tokens and `STUDIO_PUBLIC_URL`/`STUDIO_MEDIA_SECRET`; the web app must be reachable at that public address because the networks download the media from it. The hosted endpoint on Vercel has an ephemeral filesystem, so use the standalone server (`npm run mcp:http`/Docker) with a volume shared with the web app, or stdio locally.
+
+Security: on the hosted endpoint, anyone holding `MCP_AUTH_TOKEN` can now publish to the connected accounts as well as spend Gateway credits. Keep the token secret and rotate it if it leaks. `url` imports only accept links issued by this studio (files of the standalone server, or Vercel Blob's public domain), never arbitrary addresses.
 
 ### Claude Cloud (hosted, Streamable HTTP)
 
