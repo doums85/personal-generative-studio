@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { KIND_META, api, describeWarning, formatDate, formatDurationMs, formatUsd, setHandoff, studioRef, workspaceUrl } from '@/lib/studio/client';
 import { useStudio } from './StudioProvider';
 import ElementEditor from './ElementEditor';
+import PublishModal from './PublishModal';
+import { PlatformBadge, StatusBadge } from './SocialParts';
 import { Badge, Button, Icon, IconButton, Media, Modal, Notice, cx } from './ui';
 
 const KIND_BADGE = { image: ['Image', 'cyan'], video: ['Vidéo', 'violet'], speech: ['Voix', 'amber'] };
@@ -33,8 +35,16 @@ export function GenerationDetail({ generation, onClose, navigate }) {
   const { workspaceId, elements, toast, upsertGeneration, removeGeneration, refresh } = useStudio();
   const [busy, setBusy] = useState(false);
   const [saveAs, setSaveAs] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publications, setPublications] = useState([]);
   const output = generation?.files.find((file) => file.role !== 'audio') || generation?.files[0];
   const saveImages = useMemo(() => (output?.mediaType?.startsWith('image/') ? [{ url: output.url, source: 'generated' }] : []), [output]);
+  const generationId = generation?.id;
+  const loadPublications = useCallback(() => {
+    if (!generationId) return;
+    api.get(`${workspaceUrl(workspaceId, '/publications')}?generationId=${generationId}`).then((payload) => setPublications(payload.publications)).catch(() => {});
+  }, [workspaceId, generationId]);
+  useEffect(() => { loadPublications(); }, [loadPublications]);
   if (!generation) return null;
   const audio = generation.files.find((file) => file.role === 'audio');
   const isImage = output?.mediaType?.startsWith('image/');
@@ -85,6 +95,7 @@ export function GenerationDetail({ generation, onClose, navigate }) {
             {isImage && <Button size="sm" icon="refresh" onClick={variation}>Variation</Button>}
             {isImage && <Button size="sm" icon="user" onClick={() => setSaveAs('character')}>Enregistrer comme élément</Button>}
             {isImage && <Button size="sm" icon="mic" onClick={() => setSaveAs('avatar')}>En faire un avatar</Button>}
+            {output && !output.mediaType?.startsWith('audio/') && <Button size="sm" variant="primary" icon="share" onClick={() => setPublishing(true)}>Publier</Button>}
             <Button size="sm" variant="ghost" icon="star" onClick={toggleFavorite} loading={busy} className={generation.favorite ? 'text-amber-300' : ''}>{generation.favorite ? 'Favori' : 'Ajouter aux favoris'}</Button>
             <Button size="sm" variant="danger" icon="trash" onClick={remove} loading={busy}>Supprimer</Button>
           </div>
@@ -98,6 +109,21 @@ export function GenerationDetail({ generation, onClose, navigate }) {
             <section>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">Dialogue{generation.params.speech.speaker ? ` · ${generation.params.speech.speaker.name}` : ''}</p>
               <p className="mt-1 whitespace-pre-wrap leading-6 text-white/85">« {generation.params.speech.script} »</p>
+            </section>
+          )}
+          {publications.length > 0 && (
+            <section>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">Publications</p>
+              <ul className="mt-1.5 space-y-1.5">
+                {publications.map((publication) => (
+                  <li key={publication.id} className="flex items-center gap-2 text-xs">
+                    <PlatformBadge platform={publication.platform} />
+                    <span className="min-w-0 flex-1 truncate text-white/70">{publication.accountName}</span>
+                    <StatusBadge publication={publication} />
+                    {publication.url && <a href={publication.url} target="_blank" rel="noreferrer" aria-label="Ouvrir la publication" className="text-cyan-200 hover:text-cyan-100"><Icon name="external" size={12} /></a>}
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
           {usedElements.length > 0 && (
@@ -124,6 +150,7 @@ export function GenerationDetail({ generation, onClose, navigate }) {
           </details>
         </aside>
       </div>
+      {publishing && <PublishModal generation={generation} file={output} navigate={(target) => { onClose(); navigate(target); }} onClose={() => { setPublishing(false); loadPublications(); }} onPublished={loadPublications} />}
       <ElementEditor open={Boolean(saveAs)} onClose={() => setSaveAs(null)} initialKind={saveAs || 'character'} initialImages={saveImages} />
     </Modal>
   );

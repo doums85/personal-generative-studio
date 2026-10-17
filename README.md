@@ -68,6 +68,25 @@ Everything lives on disk under `STUDIO_DATA_DIR` (default `./data`, ignored by g
 
 Several video providers only accept `url` inputs for images and audio (the catalog publishes this per model). When `STUDIO_PUBLIC_URL` points to the public address of the deployment, the studio serves those files through signed links (`/api/studio/public/<token>/…`, HMAC signed with `STUDIO_MEDIA_SECRET` or `AUTH_SECRET`). Without it, the studio refuses those combinations before any paid call and suggests a model that accepts base64 inputs or the native-voice method.
 
+### Publishing to social networks
+
+Each workspace has its own connected accounts: open **Réseaux sociaux** in the sidebar to connect them, then open any image or video in the gallery and choose **Publier**. A project only ever publishes to the accounts connected to it, and deleting a project forgets its accounts.
+
+| Network | What is published | Credentials |
+| --- | --- | --- |
+| Facebook Pages | photo or video on the Page | `META_APP_ID`, `META_APP_SECRET` |
+| Instagram (professional account linked to a Page) | feed image, or Reel for videos | same Meta app |
+| TikTok | video or photo, published directly or sent to the TikTok app as a draft | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` |
+
+Setup, once per network:
+
+1. **Meta** (developers.facebook.com): create an app with *Facebook Login*, add the redirect URI shown on the *Réseaux sociaux* screen (`<STUDIO_PUBLIC_URL>/api/studio/social/callback/meta`) and request `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `instagram_basic`, `instagram_content_publish` (and `business_management` for Pages owned through a Business portfolio). Until the app passes App Review, only the app's own admins and testers can connect. Override the requested scopes with `META_SCOPES` and the API version with `META_GRAPH_VERSION`.
+2. **TikTok** (developers.tiktok.com): create an app with *Login Kit* and *Content Posting API* (scopes `user.info.basic`, `video.publish`, `video.upload`), add the redirect URI (`…/callback/tiktok`) and verify the URL prefix `<STUDIO_PUBLIC_URL>/api/studio/public/` under *URL properties*: TikTok downloads the media from it. Until TikTok audits the app, direct posts are limited to the *Moi uniquement* visibility; *Envoyer en brouillon* works regardless.
+3. Set `STUDIO_PUBLIC_URL` (public https address) and `STUDIO_MEDIA_SECRET`: the networks fetch the media from your server through the signed links described above. Images are re-encoded as JPEG on the fly (`?format=jpeg`) because Instagram and TikTok refuse PNG.
+4. Set `SOCIAL_TOKEN_SECRET` (falls back to `AUTH_SECRET`): access and refresh tokens are encrypted with it (AES-256-GCM) before being written next to the workspace, in `social-accounts.json`. Changing the secret makes stored tokens unreadable: reconnect the accounts.
+
+Instagram and TikTok process media on their side, so a publication starts as *Traitement…* and the studio follows it until the post is live (or explains why the network refused it). TikTok sessions are renewed automatically; an account whose authorisation was revoked is flagged *À reconnecter*. Publications are kept in `publications.json` of the workspace.
+
 The advanced upstream studios (Layers, Cinema, Clipping, Motion Control, Marketing, Workflows, Agents, Design Agent) remain available from the sidebar and still use the MuAPI key.
 
 ## Claude Code and other MCP clients
