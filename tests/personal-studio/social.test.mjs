@@ -47,7 +47,7 @@ function scriptedFetch(routes) {
 async function setup({ aspectRatio = '1:1', kind = 'image' } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'pgs-social-'));
   let tick = 0;
-  const studio = new StudioStore({ rootDir: root, now: () => new Date(Date.UTC(2026, 9, 17, 12, 0, tick++)) });
+  const studio = new StudioStore({ rootDir: root, now: () => new Date(Date.now() + tick++) });
   const social = new SocialStore(studio, { env: ENV });
   const workspace = await studio.createWorkspace({ name: 'Marque A' });
   const generation = await studio.createGeneration(workspace.id, kind === 'image'
