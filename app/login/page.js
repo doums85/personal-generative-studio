@@ -1,4 +1,6 @@
+import { AuthError } from 'next-auth';
 import { auth, signIn } from '@/auth';
+import { signInWithPassword } from '@/lib/login-action.mjs';
 import { redirect } from 'next/navigation';
 
 export const metadata = { title: 'Connexion — Personal Generative Studio' };
@@ -23,11 +25,7 @@ export default async function LoginPage({ searchParams }) {
         )}
         <form className="mt-8 space-y-4" action={async (formData) => {
           'use server';
-          await signIn('credentials', {
-            email: formData.get('email'),
-            password: formData.get('password'),
-            redirectTo: '/studio',
-          });
+          await signInWithPassword(formData, { signIn, redirect, isAuthError: (error) => error instanceof AuthError });
         }}>
           <label className="block text-sm text-white/70">
             Adresse e-mail
