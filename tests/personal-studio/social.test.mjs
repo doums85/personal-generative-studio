@@ -7,7 +7,9 @@ import { decryptJson, encryptJson, signState, verifyState } from '../../lib/soci
 import { SocialError } from '../../lib/social/errors.mjs';
 import { metaConnector } from '../../lib/social/meta.mjs';
 import { checkPublishable } from '../../lib/social/rules.mjs';
-import { completeConnection, publishGeneration, refreshPublication, redirectUriFor, socialOverview, startConnection } from '../../lib/social/service.mjs';
+import { completeConnection, publishGeneration, refreshPublication, redirectUriFor, runDuePublications, socialOverview, startConnection } from '../../lib/social/service.mjs';
+import { cronAuthorized, schedulerStatus } from '../../lib/social/schedule.mjs';
+import { startScheduler } from '../../lib/social/scheduler.mjs';
 import { SocialStore } from '../../lib/social/store.mjs';
 import { tiktokConnector } from '../../lib/social/tiktok.mjs';
 import { StudioStore } from '../../lib/studio/store.mjs';
@@ -127,7 +129,7 @@ test('a connection lands in the workspace named by the state, only from the brow
     const { url, nonce } = await startConnection({ social, workspaceId: workspace.id, connectorId: 'tiktok', env: ENV });
     const state = new URL(url).searchParams.get('state');
     const { fetchImpl } = scriptedFetch([
-      { match: '/v2/oauth/token/', reply: { access_token: 'AT', refresh_token: 'RT', expires_in: 86400, refresh_expires_in: 31536000, open_id: 'tt-open-1' } },
+      { match: '/v2/oauth/token/', reply: { access_token: 'plaintext-access-token-9f3', refresh_token: 'plaintext-refresh-token-7b1', expires_in: 86400, refresh_expires_in: 31536000, open_id: 'tt-open-1' } },
       { match: '/v2/user/info/', reply: { data: { user: { open_id: 'tt-open-1', display_name: 'Studio TikTok', avatar_url: 'https://img/tt.png' } }, error: { code: 'ok' } } },
     ]);
     await assert.rejects(completeConnection({ social, connectorId: 'tiktok', code: 'C', state, nonce: 'wrong', env: ENV, fetch: fetchImpl }), /pas été lancée depuis ce navigateur/);
@@ -140,7 +142,8 @@ test('a connection lands in the workspace named by the state, only from the brow
     assert.equal(accounts[0].name, 'Studio TikTok');
     assert.equal(accounts[0].credentials, undefined);
     const raw = await readFile(path.join(social.studio.workspaceDir(workspace.id), 'social-accounts.json'), 'utf8');
-    assert.ok(!raw.includes('"AT"') && !raw.includes('RT'), 'tokens must be encrypted at rest');
+    assert.ok(!raw.includes('plaintext-access-token-9f3') && !raw.includes('plaintext-refresh-token-7b1'), 'tokens must be encrypted at rest');
+    assert.equal((await social.getAccount(workspace.id, accounts[0].id)).credentials.accessToken, 'plaintext-access-token-9f3');
 
     // Reconnecting the same account refreshes it instead of duplicating it.
     const again = await startConnection({ social, workspaceId: workspace.id, connectorId: 'tiktok', env: ENV });
@@ -334,4 +337,125 @@ test('TikTok connector keeps the account usable when the profile lookup fails', 
   const [account] = await tiktokConnector.connect({ env: ENV, code: 'C', redirectUri: 'https://x/cb', fetch: fetchImpl, now: 0 });
   assert.equal(account.externalId, 'o1');
   assert.equal(account.credentials.expiresAt, new Date(100 * 1000).toISOString());
+});
+
+const MINUTE = 60 * 1000;
+
+test('a scheduled publication sends nothing until it is due, and refuses unreasonable times', async () => {
+  const { social, workspace, generation, cleanup } = await setup();
+  try {
+    const [account] = await social.upsertAccounts(workspace.id, [{ platform: 'facebook', externalId: 'p1', name: 'Page A', credentials: { accessToken: 'T' } }]);
+    const { fetchImpl, calls } = scriptedFetch([{ match: '/p1/photos', method: 'POST', reply: { id: '1', post_id: 'p1_1' } }]);
+    const clock = Date.UTC(2026, 9, 20, 8, 0, 0);
+    const request = (scheduledAt) => ({ generationId: generation.id, caption: 'Demain', scheduledAt, targets: [{ accountId: account.id }] });
+    const publish = (scheduledAt) => publishGeneration({ social, workspaceId: workspace.id, env: ENV, fetch: fetchImpl, sleep: noSleep, now: () => clock, input: request(scheduledAt) });
+
+    await assert.rejects(publish(new Date(clock + 10 * 1000).toISOString()), /au moins une minute/);
+    await assert.rejects(publish(new Date(clock + 400 * 24 * 60 * MINUTE).toISOString()), /plus d’un an/);
+    await assert.rejects(publish('demain 9h'), (error) => describeError(error).status === 400);
+
+    const due = new Date(clock + 60 * MINUTE).toISOString();
+    const [scheduled] = await publish(due);
+    assert.equal(scheduled.status, 'scheduled');
+    assert.equal(scheduled.scheduledAt, due);
+    assert.equal(calls.length, 0);
+
+    const tick = (at) => runDuePublications({ social, env: ENV, fetch: fetchImpl, now: () => at });
+    assert.deepEqual(await tick(clock + 59 * MINUTE), []);
+    assert.equal(calls.length, 0);
+
+    const [sent] = await tick(clock + 61 * MINUTE);
+    assert.equal(sent.status, 'published');
+    assert.equal(sent.url, 'https://www.facebook.com/p1_1');
+    assert.equal(calls.length, 1);
+    assert.deepEqual(await tick(clock + 62 * MINUTE), [], 'a sent publication is never sent twice');
+    assert.equal(calls.length, 1);
+  } finally { await cleanup(); }
+});
+
+test('two scheduler ticks at the same moment send a due publication once', async () => {
+  const { social, workspace, generation, cleanup } = await setup();
+  try {
+    const [account] = await social.upsertAccounts(workspace.id, [{ platform: 'facebook', externalId: 'p1', name: 'Page A', credentials: { accessToken: 'T' } }]);
+    const { fetchImpl, calls } = scriptedFetch([{ match: '/p1/photos', method: 'POST', reply: { id: '1', post_id: 'p1_1' } }]);
+    const clock = Date.UTC(2026, 9, 20, 8, 0, 0);
+    await publishGeneration({ social, workspaceId: workspace.id, env: ENV, fetch: fetchImpl, now: () => clock, input: { generationId: generation.id, scheduledAt: new Date(clock + 5 * MINUTE).toISOString(), targets: [{ accountId: account.id }] } });
+    const tick = () => runDuePublications({ social, env: ENV, fetch: fetchImpl, now: () => clock + 6 * MINUTE });
+    const results = await Promise.all([tick(), tick()]);
+    assert.equal(results.flat().length, 1);
+    assert.equal(calls.length, 1);
+  } finally { await cleanup(); }
+});
+
+test('the scheduler finishes a scheduled Reel over several ticks, without the studio open', async () => {
+  const { social, workspace, generation, cleanup } = await setup({ kind: 'video', aspectRatio: '9:16' });
+  try {
+    const [account] = await social.upsertAccounts(workspace.id, [{ platform: 'instagram', externalId: 'ig1', name: 'Marque A', credentials: { accessToken: 'T' } }]);
+    let ready = false;
+    const { fetchImpl } = scriptedFetch([
+      { match: '/ig1/media_publish', method: 'POST', reply: { id: 'reel-1' } },
+      { match: '/ig1/media', method: 'POST', reply: { id: 'container-1' } },
+      { match: '/container-1', reply: () => ({ status_code: ready ? 'FINISHED' : 'IN_PROGRESS' }) },
+      { match: '/reel-1', reply: { permalink: 'https://www.instagram.com/reel/R/' } },
+    ]);
+    const clock = Date.UTC(2026, 9, 20, 8, 0, 0);
+    await publishGeneration({ social, workspaceId: workspace.id, env: ENV, fetch: fetchImpl, now: () => clock, input: { generationId: generation.id, caption: 'Reel', scheduledAt: new Date(clock + 5 * MINUTE).toISOString(), targets: [{ accountId: account.id }] } });
+    const tick = (minutes) => runDuePublications({ social, env: ENV, fetch: fetchImpl, now: () => clock + minutes * MINUTE });
+    assert.equal((await tick(6))[0].status, 'processing');
+    assert.equal((await tick(7))[0].status, 'processing');
+    ready = true;
+    const [done] = await tick(8);
+    assert.equal(done.status, 'published');
+    assert.equal(done.url, 'https://www.instagram.com/reel/R/');
+    assert.deepEqual(await tick(9), []);
+  } finally { await cleanup(); }
+});
+
+test('a scheduled publication whose account vanished or expired fails visibly instead of disappearing', async () => {
+  const { social, workspace, generation, cleanup } = await setup();
+  try {
+    const [account] = await social.upsertAccounts(workspace.id, [{ platform: 'facebook', externalId: 'p1', name: 'Page A', credentials: { accessToken: 'T' } }]);
+    const { fetchImpl, calls } = scriptedFetch([]);
+    const clock = Date.UTC(2026, 9, 20, 8, 0, 0);
+    await publishGeneration({ social, workspaceId: workspace.id, env: ENV, fetch: fetchImpl, now: () => clock, input: { generationId: generation.id, scheduledAt: new Date(clock + 5 * MINUTE).toISOString(), targets: [{ accountId: account.id }] } });
+    await social.removeAccount(workspace.id, account.id);
+    const [failed] = await runDuePublications({ social, env: ENV, fetch: fetchImpl, now: () => clock + 6 * MINUTE });
+    assert.equal(failed.status, 'failed');
+    assert.match(failed.error, /Compte introuvable/);
+    assert.equal(calls.length, 0);
+    assert.equal((await social.listPublications(workspace.id))[0].status, 'failed');
+  } finally { await cleanup(); }
+});
+
+test('a scheduled publication can be cancelled before it is due', async () => {
+  const { social, workspace, generation, cleanup } = await setup();
+  try {
+    const [account] = await social.upsertAccounts(workspace.id, [{ platform: 'facebook', externalId: 'p1', name: 'Page A', credentials: { accessToken: 'T' } }]);
+    const { fetchImpl, calls } = scriptedFetch([]);
+    const clock = Date.UTC(2026, 9, 20, 8, 0, 0);
+    const [scheduled] = await publishGeneration({ social, workspaceId: workspace.id, env: ENV, fetch: fetchImpl, now: () => clock, input: { generationId: generation.id, scheduledAt: new Date(clock + 5 * MINUTE).toISOString(), targets: [{ accountId: account.id }] } });
+    await social.deletePublication(workspace.id, scheduled.id);
+    assert.deepEqual(await runDuePublications({ social, env: ENV, fetch: fetchImpl, now: () => clock + 10 * MINUTE }), []);
+    assert.equal(calls.length, 0);
+  } finally { await cleanup(); }
+});
+
+test('the cron endpoint secret is compared exactly and the scheduler mode follows the host', async () => {
+  assert.equal(cronAuthorized('Bearer s3cret-s3cret-s3cret', { CRON_SECRET: 's3cret-s3cret-s3cret' }), true);
+  assert.equal(cronAuthorized('Bearer s3cret-s3cret-s3creT', { CRON_SECRET: 's3cret-s3cret-s3cret' }), false);
+  assert.equal(cronAuthorized('Bearer ', { CRON_SECRET: '' }), false);
+  assert.equal(cronAuthorized(null, { CRON_SECRET: 'x' }), false);
+
+  assert.deepEqual(schedulerStatus({}), { mode: 'interval', active: true, cron: false });
+  assert.deepEqual(schedulerStatus({ VERCEL: '1' }), { mode: 'none', active: false });
+  assert.deepEqual(schedulerStatus({ VERCEL: '1', CRON_SECRET: 'x' }), { mode: 'cron', active: true });
+  assert.deepEqual(schedulerStatus({ SOCIAL_SCHEDULER: 'off' }), { mode: 'none', active: false });
+
+  assert.equal(startScheduler({ env: { VERCEL: '1' } }), false);
+  assert.equal(startScheduler({ env: { SOCIAL_SCHEDULER: 'off' } }), false);
+  const first = startScheduler({ env: {}, intervalMs: 3600 * 1000 });
+  assert.equal(first, true);
+  assert.equal(startScheduler({ env: {}, intervalMs: 3600 * 1000 }), false, 'only one ticker per process');
+  clearInterval(globalThis[Symbol.for('personal-generative-studio.social-scheduler')]);
+  delete globalThis[Symbol.for('personal-generative-studio.social-scheduler')];
 });

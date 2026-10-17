@@ -1,12 +1,26 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { PLATFORM_META, TIKTOK_PRIVACY, api, workspaceUrl } from '@/lib/studio/client';
-import { CAPTION_LIMITS } from '@/lib/social/platforms.mjs';
+import { PLATFORM_META, TIKTOK_PRIVACY, api, formatDate, workspaceUrl } from '@/lib/studio/client';
+import { CAPTION_LIMITS, SCHEDULE_MAX_LEAD_MS, SCHEDULE_MIN_LEAD_MS } from '@/lib/social/platforms.mjs';
 import { checkPublishable, mediaKindOf } from '@/lib/social/rules.mjs';
 import { useStudio } from './StudioProvider';
-import { Avatar, PlatformBadge, PublicationRow, usePublicationPolling } from './SocialParts';
-import { Button, EmptyState, Field, Media, Modal, Notice, Segmented, Select, Spinner, Textarea, cx } from './ui';
+import { Avatar, PlatformBadge, PublicationRow, SchedulerNotice, usePublicationPolling } from './SocialParts';
+import { Button, EmptyState, Field, Input, Media, Modal, Notice, Segmented, Select, Spinner, Textarea, cx } from './ui';
+
+/** `datetime-local` value (local time, minute precision) for a timestamp. */
+function toLocalInput(timestamp) {
+  const date = new Date(timestamp);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function tomorrowMorning() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(9, 0, 0, 0);
+  return toLocalInput(date);
+}
 
 /** Sends one creation to the social accounts connected to the active project. */
 export default function PublishModal({ generation, file, onClose, navigate, onPublished }) {
@@ -18,6 +32,8 @@ export default function PublishModal({ generation, file, onClose, navigate, onPu
   const [tiktok, setTiktok] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [results, setResults] = useState(null);
+  const [timing, setTiming] = useState('now');
+  const [scheduledFor, setScheduledFor] = useState(tomorrowMorning);
 
   useEffect(() => {
     api.get(workspaceUrl(workspaceId, '/social')).then(setOverview).catch((error) => setLoadError(error.message));
@@ -40,6 +56,8 @@ export default function PublishModal({ generation, file, onClose, navigate, onPu
   const kind = mediaKindOf(file?.mediaType);
   const issues = useMemo(() => chosen.flatMap((account) => checkPublishable({ platform: account.platform, kind, aspectRatio: generation.params?.aspectRatio, caption }).map((issue) => ({ ...issue, account }))), [chosen, kind, generation.params?.aspectRatio, caption]);
   const blocking = issues.some((issue) => issue.level === 'error') || chosen.some((account) => account.status === 'needs_reconnect');
+  const scheduledTime = timing === 'later' ? new Date(scheduledFor).getTime() : null;
+  const scheduleError = timing !== 'later' ? '' : Number.isNaN(scheduledTime) ? 'Choisissez une date et une heure.' : scheduledTime < Date.now() + SCHEDULE_MIN_LEAD_MS + 15000 ? 'Choisissez une heure dans le futur (au moins deux minutes).' : scheduledTime > Date.now() + SCHEDULE_MAX_LEAD_MS ? 'La programmation est limitée à un an.' : '';
   const limit = chosen.length ? Math.min(...chosen.map((account) => CAPTION_LIMITS[account.platform])) : null;
 
   usePublicationPolling(workspaceId, results || [], (publication) => setResults((current) => current.map((item) => (item.id === publication.id ? publication : item))));
@@ -54,7 +72,7 @@ export default function PublishModal({ generation, file, onClose, navigate, onPu
         accountId: account.id,
         options: account.platform === 'tiktok' ? { mode: tiktok[account.id]?.mode, privacyLevel: tiktok[account.id]?.privacyLevel } : {},
       }));
-      const { publications } = await api.post(workspaceUrl(workspaceId, '/publications'), { generationId: generation.id, fileId: file.id, caption, targets });
+      const { publications } = await api.post(workspaceUrl(workspaceId, '/publications'), { generationId: generation.id, fileId: file.id, caption, targets, ...(scheduledTime ? { scheduledAt: new Date(scheduledTime).toISOString() } : {}) });
       setResults(publications);
       onPublished?.();
     } catch (error) {
@@ -77,7 +95,7 @@ export default function PublishModal({ generation, file, onClose, navigate, onPu
       ) : (
         <>
           <Button variant="ghost" onClick={onClose}>Annuler</Button>
-          <Button variant="primary" icon="share" loading={submitting} disabled={!chosen.length || blocking || !kind} onClick={submit}>{chosen.length ? `Publier sur ${chosen.length} compte${chosen.length > 1 ? 's' : ''}` : 'Choisissez un compte'}</Button>
+          <Button variant="primary" icon="share" loading={submitting} disabled={!chosen.length || blocking || !kind || Boolean(scheduleError)} onClick={submit}>{chosen.length ? `${timing === 'later' ? 'Programmer' : 'Publier'} sur ${chosen.length} compte${chosen.length > 1 ? 's' : ''}` : 'Choisissez un compte'}</Button>
         </>
       )}
     >
@@ -87,8 +105,9 @@ export default function PublishModal({ generation, file, onClose, navigate, onPu
       {results && (
         <div className="space-y-3">
           <Notice tone={results.some((item) => item.status === 'failed') ? 'warning' : 'success'}>
-            {done ? 'Envoi terminé.' : 'Envoi en cours : Instagram et TikTok traitent le média avant de le mettre en ligne. Ce suivi se met à jour automatiquement.'}
+            {results.every((item) => item.status === 'scheduled') ? `Programmé pour le ${formatDate(results[0].scheduledAt)}. Le serveur publiera à l’heure dite : il doit rester en marche, et vous pouvez annuler depuis « Réseaux sociaux ».` : done ? 'Envoi terminé.' : 'Envoi en cours : Instagram et TikTok traitent le média avant de le mettre en ligne. Ce suivi se met à jour automatiquement.'}
           </Notice>
+          {results.some((item) => item.status === 'scheduled') && <SchedulerNotice scheduler={overview?.scheduler} />}
           {results.map((publication) => <PublicationRow key={publication.id} publication={publication} />)}
         </div>
       )}
@@ -129,6 +148,16 @@ export default function PublishModal({ generation, file, onClose, navigate, onPu
               <Field label="Légende" hint={limit ? `${caption.length} / ${limit} caractères` : 'Hashtags et mentions inclus.'}>
                 <Textarea rows={4} value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Écrivez la légende de la publication…" />
               </Field>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Quand</p>
+                <Segmented size="sm" value={timing} onChange={setTiming} options={[{ value: 'now', label: 'Maintenant' }, { value: 'later', label: 'Programmer' }]} />
+                {timing === 'later' && (
+                  <Field label="Date et heure" hint={scheduleError || `Heure locale de votre navigateur (${Intl.DateTimeFormat().resolvedOptions().timeZone}).`}>
+                    <Input type="datetime-local" value={scheduledFor} min={toLocalInput(Date.now() + SCHEDULE_MIN_LEAD_MS + 60000)} onChange={(event) => setScheduledFor(event.target.value)} aria-invalid={Boolean(scheduleError)} />
+                  </Field>
+                )}
+              </div>
 
               {chosen.filter((account) => account.platform === 'tiktok').map((account) => {
                 const options = tiktok[account.id];

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { PLATFORM_META, api, formatDate, workspaceUrl } from '@/lib/studio/client';
-import { Badge, Icon, Spinner } from './ui';
+import { Badge, Icon, Notice, Spinner } from './ui';
 
 /** Profile picture served by the network's CDN (arbitrary hosts, so no next/image). */
 export function Avatar({ account, size = 36 }) {
@@ -17,6 +17,7 @@ export function PlatformBadge({ platform }) {
 }
 
 const STATUS = {
+  scheduled: ['Programmé', 'cyan'],
   processing: ['Traitement…', 'amber'],
   published: ['Publié', 'green'],
   failed: ['Échec', 'red'],
@@ -43,8 +44,18 @@ export function PublicationRow({ publication }) {
       </div>
       {publication.caption && <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-white/50">{publication.caption}</p>}
       {publication.error && <p className={publication.status === 'failed' ? 'mt-1.5 text-xs leading-5 text-red-200' : 'mt-1.5 text-xs leading-5 text-amber-200'}>{publication.error}</p>}
-      <p className="mt-1 text-[10px] uppercase tracking-wide text-white/30">{formatDate(publication.publishedAt || publication.createdAt)}</p>
+      <p className="mt-1 text-[10px] uppercase tracking-wide text-white/30">{publication.status === 'scheduled' ? `Prévu le ${formatDate(publication.scheduledAt)}` : formatDate(publication.publishedAt || publication.createdAt)}</p>
     </div>
+  );
+}
+
+/** Warns when scheduled posts would never leave: no ticker (serverless host) and no cron configured. */
+export function SchedulerNotice({ scheduler }) {
+  if (!scheduler || scheduler.active) return null;
+  return (
+    <Notice tone="warning">
+      Aucun planificateur actif : les publications programmées ne partiront pas. Sur un hébergement serverless (Vercel), définissez <code className="rounded bg-black/40 px-1">CRON_SECRET</code> et faites appeler <code className="rounded bg-black/40 px-1">/api/studio/social/run-due</code> chaque minute par un cron (en-tête <code className="rounded bg-black/40 px-1">Authorization: Bearer …</code>).
+    </Notice>
   );
 }
 

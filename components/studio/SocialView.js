@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, workspaceUrl } from '@/lib/studio/client';
 import { useStudio } from './StudioProvider';
-import { Avatar, PlatformBadge, PublicationRow, usePublicationPolling } from './SocialParts';
+import { Avatar, PlatformBadge, PublicationRow, SchedulerNotice, usePublicationPolling } from './SocialParts';
 import { Badge, Button, EmptyState, Icon, Notice, Panel, Spinner } from './ui';
 
 const CONNECTOR_COPY = {
@@ -85,6 +85,8 @@ export default function SocialView() {
         </Notice>
       )}
 
+      {publications.some((item) => item.status === 'scheduled') && <SchedulerNotice scheduler={overview.scheduler} />}
+
       <div className="grid gap-4 md:grid-cols-2">
         {overview.connectors.map((connector) => {
           const copy = CONNECTOR_COPY[connector.id];
@@ -131,7 +133,7 @@ export default function SocialView() {
         })}
       </div>
 
-      <Panel title="Historique des publications" subtitle="Statut en direct : Instagram et TikTok traitent la vidéo de leur côté avant de la mettre en ligne." action={<Button size="sm" variant="ghost" icon="refresh" onClick={load}>Actualiser</Button>}>
+      <Panel title="Historique des publications" subtitle="Statut en direct : Instagram et TikTok traitent la vidéo de leur côté avant de la mettre en ligne. Les publications programmées partent à l’heure dite." action={<Button size="sm" variant="ghost" icon="refresh" onClick={load}>Actualiser</Button>}>
         {publications.length === 0 ? (
           <EmptyState icon="share" title="Rien de publié pour l’instant" description="Ouvrez une création dans la galerie et choisissez « Publier »." />
         ) : (
@@ -139,7 +141,8 @@ export default function SocialView() {
             {publications.map((publication) => (
               <li key={publication.id} className="group relative">
                 <PublicationRow publication={publication} />
-                {publication.status !== 'processing' && <button type="button" onClick={() => forget(publication)} className="absolute right-2 top-2 hidden rounded-md p-1 text-white/30 hover:bg-white/[0.08] hover:text-white group-hover:block" aria-label="Retirer de l’historique"><Icon name="close" size={12} /></button>}
+                {publication.status === 'scheduled' && <Button size="sm" variant="ghost" className="absolute bottom-2 right-2" onClick={() => forget(publication)}>Annuler la programmation</Button>}
+                {publication.status !== 'processing' && publication.status !== 'scheduled' && <button type="button" onClick={() => forget(publication)} className="absolute right-2 top-2 hidden rounded-md p-1 text-white/30 hover:bg-white/[0.08] hover:text-white group-hover:block" aria-label="Retirer de l’historique"><Icon name="close" size={12} /></button>}
               </li>
             ))}
           </ul>

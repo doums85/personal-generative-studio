@@ -16,8 +16,9 @@ function addSecurityHeaders(response) {
 }
 
 function isPublicPath(pathname) {
-  // /api/mcp authenticates itself with MCP_AUTH_TOKEN (remote MCP clients have no owner session).
-  return pathname === '/login' || pathname.startsWith('/api/auth/') || pathname === '/api/mcp' || pathname.startsWith('/api/mcp/');
+  // /api/mcp authenticates itself with MCP_AUTH_TOKEN (remote MCP clients have no owner session);
+  // the scheduler endpoint checks CRON_SECRET for the same reason.
+  return pathname === '/login' || pathname.startsWith('/api/auth/') || pathname === '/api/mcp' || pathname.startsWith('/api/mcp/') || pathname === '/api/studio/social/run-due';
 }
 
 export default auth((request) => {
