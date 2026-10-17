@@ -117,6 +117,18 @@ Configuration:
 
 Each generation writes the media files plus a JSON manifest (prompt, model, estimate, warnings) next to them, so a project keeps its own history of generated assets.
 
+### Publishing from Claude
+
+Four more tools let an agent post what it generates to the accounts connected to a workspace (see *Publishing to social networks*): `list_social_accounts`, `list_generations` (gallery ids), `publish_to_social` and `list_publications`.
+
+- `publish_to_social` takes `accounts` (ids, `instagram`, `instagram:Name` or `@handle`), a `caption`, and exactly one media source: `file` (local path, typically the file `generate_image` just wrote; stdio only), `url` (a link returned by `generate_*` on the hosted endpoint) or `generation` (gallery id). Imported media is added to the workspace gallery. Optional: `scheduledAt` (ISO 8601 with offset), `aspectRatio` (so the Instagram/TikTok format checks apply to imported files), `tiktokMode` (`publish` or `draft`) and `tiktokPrivacy` (default `SELF_ONLY`).
+- It posts publicly and cannot be undone from the tool, so its description tells the model to publish only on explicit request and to run it with `dryRun: true` first (reports format and caption problems per account without importing or sending anything).
+- Instagram and TikTok finish processing on their side; the result then says *processing* and `list_publications` checks with the platform and reports the final state or link.
+
+Requirements: the MCP server must see the same `STUDIO_DATA_DIR` as the web app (that is where the accounts live), plus `SOCIAL_TOKEN_SECRET`/`AUTH_SECRET` to decrypt the tokens and `STUDIO_PUBLIC_URL`/`STUDIO_MEDIA_SECRET`; the web app must be reachable at that public address because the networks download the media from it. The hosted endpoint on Vercel has an ephemeral filesystem, so use the standalone server (`npm run mcp:http`/Docker) with a volume shared with the web app, or stdio locally.
+
+Security: on the hosted endpoint, anyone holding `MCP_AUTH_TOKEN` can now publish to the connected accounts as well as spend Gateway credits. Keep the token secret and rotate it if it leaks. `url` imports only accept links issued by this studio (files of the standalone server, or Vercel Blob's public domain), never arbitrary addresses.
+
 ### Claude Cloud (hosted, Streamable HTTP)
 
 Claude Cloud cannot start a process on your machine, so the studio also exposes the MCP tools over Streamable HTTP. They are the same tools; instead of disk paths, each generation returns download links, and local `outputDir` / reference-image paths are not offered.

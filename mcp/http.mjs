@@ -16,7 +16,7 @@ import { pathToFileURL } from 'node:url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { loadGatewayCatalog } from '../lib/gateway/engine.mjs';
 import { MEDIA_TYPE_BY_EXTENSION } from '../lib/gateway/media-files.mjs';
-import { MIN_TOKEN_LENGTH, createDiskPublisher, extractToken, isValidAuthToken, tokensMatch } from '../lib/server/mcp-http.mjs';
+import { MIN_TOKEN_LENGTH, createDiskPublisher, createDiskReader, extractToken, isValidAuthToken, tokensMatch } from '../lib/server/mcp-http.mjs';
 import { createStudioServer, loadLocalEnv } from './server.mjs';
 
 export { tokensMatch };
@@ -50,7 +50,7 @@ export function createHttpHandler({
     throw new Error(`MCP_AUTH_TOKEN must be set and at least ${MIN_TOKEN_LENGTH} characters long`);
   }
   const root = path.resolve(filesRoot);
-  const remote = { publish: createDiskPublisher({ filesRoot: root, publicBaseUrl }) };
+  const remote = { publish: createDiskPublisher({ filesRoot: root, publicBaseUrl }), fetchOwn: createDiskReader({ filesRoot: root, publicBaseUrl }) };
 
   let catalogCache = null;
   async function sharedCatalog() {

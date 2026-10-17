@@ -1,5 +1,5 @@
 import { loadGatewayCatalog } from '@/lib/gateway/engine.mjs';
-import { createBlobPublisher, handleMcpRequest } from '@/lib/server/mcp-http.mjs';
+import { createBlobPublisher, fetchBlobUrl, handleMcpRequest } from '@/lib/server/mcp-http.mjs';
 import { getStudioStore } from '@/lib/studio/store.mjs';
 
 export const maxDuration = 300;
@@ -18,7 +18,7 @@ async function handle(request, context) {
     authToken: process.env.MCP_AUTH_TOKEN,
     pathToken: token[0],
     // An explicit token wins over the OIDC credentials of any other Blob store connected to the project.
-    remote: { publish: createBlobPublisher({ token: process.env.BLOB_READ_WRITE_TOKEN }) },
+    remote: { publish: createBlobPublisher({ token: process.env.BLOB_READ_WRITE_TOKEN }), fetchOwn: fetchBlobUrl },
     store: getStudioStore(),
     loadCatalog: () => loadGatewayCatalog({ fetchOptions: { next: { revalidate: 900 } } }),
   });

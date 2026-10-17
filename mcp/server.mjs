@@ -20,6 +20,8 @@ import { composePrompt } from '../lib/studio/prompt.mjs';
 import { trimReferences } from '../lib/studio/service.mjs';
 import { chooseVideoModelForSpeech, estimateSpeechSeconds, pickVideoDuration, withSpeechPrompt } from '../lib/studio/speech.mjs';
 import { StudioStore, resolveDataDir } from '../lib/studio/store.mjs';
+import { getSocialStore } from '../lib/social/store.mjs';
+import { registerSocialTools } from './social-tools.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CATALOG_TTL_MS = 15 * 60 * 1000;
@@ -117,6 +119,8 @@ export function createStudioServer({
   env = process.env,
   now = () => new Date(),
   store = new StudioStore({ rootDir: resolveDataDir(env, REPO_ROOT) }),
+  social = getSocialStore(store),
+  fetch: fetchImpl = fetch,
   remote = null,
 } = {}) {
   const server = new McpServer(SERVER_INFO, {
@@ -129,6 +133,7 @@ export function createStudioServer({
       remote
         ? 'Every generation returns download URLs for the files; share or fetch those links.'
         : 'Every generation returns the absolute file paths written; read or reuse them directly.',
+      'Social accounts (Facebook, Instagram, TikTok) are connected per workspace in the web app: list_social_accounts shows them and publish_to_social posts a file or gallery item to them, now or scheduled. Publishing is public and irreversible: only publish when the user asked for it, and try dryRun first.',
     ].join(' '),
   });
 
@@ -412,6 +417,8 @@ export function createStudioServer({
       return errorResult(error);
     }
   });
+
+  registerSocialTools(server, { store, social, env, fetch: fetchImpl, now, cwd, remote, resolveWorkspace, errorResult });
 
   return server;
 }
