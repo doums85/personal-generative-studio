@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { isAllowedSession, isLocalPreview } from '@/lib/access-control.mjs';
+import { isAllowedSession, isLocalPreview, isPublicPath } from '@/lib/access-control.mjs';
 import { getLocaleFromPathname } from './lib/locales';
 
 function addSecurityHeaders(response) {
@@ -13,12 +13,6 @@ function addSecurityHeaders(response) {
     "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https://ai-gateway.vercel.sh https://*.vercel-storage.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
   );
   return response;
-}
-
-function isPublicPath(pathname) {
-  // /api/mcp authenticates itself with MCP_AUTH_TOKEN (remote MCP clients have no owner session);
-  // the scheduler endpoint checks CRON_SECRET for the same reason.
-  return pathname === '/login' || pathname.startsWith('/api/auth/') || pathname === '/api/mcp' || pathname.startsWith('/api/mcp/') || pathname === '/api/studio/social/run-due';
 }
 
 export default auth((request) => {
