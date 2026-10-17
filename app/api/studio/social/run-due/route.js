@@ -1,7 +1,7 @@
 import { cronAuthorized } from '@/lib/social/schedule.mjs';
 import { runDuePublications } from '@/lib/social/service.mjs';
 import { getSocialStore } from '@/lib/social/store.mjs';
-import { getStudioStore } from '@/lib/studio/store.mjs';
+import { getStudioStore } from '@/lib/studio/backend.mjs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;

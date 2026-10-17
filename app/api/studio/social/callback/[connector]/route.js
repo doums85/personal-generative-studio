@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireOwner } from '@/lib/server/require-owner';
 import { describeError } from '@/lib/studio/service.mjs';
-import { getStudioStore } from '@/lib/studio/store.mjs';
+import { getStudioStore } from '@/lib/studio/backend.mjs';
 import { getSocialStore } from '@/lib/social/store.mjs';
 import { completeConnection } from '@/lib/social/service.mjs';
 import { verifyState } from '@/lib/social/crypto.mjs';

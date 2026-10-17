@@ -19,7 +19,7 @@ import { MEDIA_TYPE_BY_EXTENSION, saveGeneratedMedia } from '../lib/gateway/medi
 import { composePrompt } from '../lib/studio/prompt.mjs';
 import { trimReferences } from '../lib/studio/service.mjs';
 import { chooseVideoModelForSpeech, estimateSpeechSeconds, pickVideoDuration, withSpeechPrompt } from '../lib/studio/speech.mjs';
-import { StudioStore, resolveDataDir } from '../lib/studio/store.mjs';
+import { createStudioStore } from '../lib/studio/backend.mjs';
 import { getSocialStore } from '../lib/social/store.mjs';
 import { registerSocialTools } from './social-tools.mjs';
 
@@ -118,7 +118,7 @@ export function createStudioServer({
   cwd = process.cwd(),
   env = process.env,
   now = () => new Date(),
-  store = new StudioStore({ rootDir: resolveDataDir(env, REPO_ROOT) }),
+  store = createStudioStore({ env, root: REPO_ROOT }),
   social = getSocialStore(store),
   fetch: fetchImpl = fetch,
   remote = null,
@@ -260,7 +260,7 @@ export function createStudioServer({
         : `Workspace "${workspace.name}" has no element yet.`;
       return {
         content: [{ type: 'text', text }],
-        structuredContent: { workspace: { id: workspace.id, name: workspace.name }, elements: elements.map((element) => ({ id: element.id, kind: element.kind, name: element.name, description: element.description, voice: element.voice || null, images: element.images.map((image) => store.mediaPath(workspace.id, image.file)) })) },
+        structuredContent: { workspace: { id: workspace.id, name: workspace.name }, elements: elements.map((element) => ({ id: element.id, kind: element.kind, name: element.name, description: element.description, voice: element.voice || null, images: element.images.map((image) => (store.mediaPath ? store.mediaPath(workspace.id, image.file) : image.file)) })) },
       };
     } catch (error) {
       return errorResult(error);
