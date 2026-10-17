@@ -15,7 +15,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint auth.js proxy.js app/login app/api/gateway app/api/studio app/api/auth components/StandaloneShell.js components/studio lib/access-control.mjs lib/password.mjs scripts/hash-password.mjs lib/studio lib/gateway lib/server tests/personal-studio mcp",
+    "lint": "eslint auth.js proxy.js app/login app/api/gateway app/api/studio app/api/auth components/StandaloneShell.js components/studio lib/access-control.mjs lib/login-action.mjs lib/password.mjs scripts/hash-password.mjs lib/studio lib/gateway lib/server tests/personal-studio mcp",
     "test": "node --test tests/personal-studio/*.test.mjs",
     "build:studio": "npm run build -w studio",
     "build:workflow": "npm run build -w workflow-builder",
