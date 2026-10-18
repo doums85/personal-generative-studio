@@ -113,6 +113,14 @@ test('authorisation URLs carry the signed state and the right scopes', async () 
     assert.ok(url.searchParams.get('scope').includes('instagram_content_publish'));
     assert.equal(url.searchParams.get('redirect_uri'), 'https://studio.example.com/api/studio/social/callback/meta');
     assert.equal(verifyState(url.searchParams.get('state'), ENV.SOCIAL_TOKEN_SECRET).workspaceId, workspace.id);
+    assert.equal(url.searchParams.get('config_id'), null);
+
+    // Facebook Login for Business: the login configuration replaces the scopes.
+    const business = new URL((await startConnection({ social, workspaceId: workspace.id, connectorId: 'meta', env: { ...ENV, META_CONFIG_ID: '1234' } })).url);
+    assert.equal(business.searchParams.get('config_id'), '1234');
+    assert.equal(business.searchParams.get('override_default_response_type'), 'true');
+    assert.equal(business.searchParams.get('response_type'), 'code');
+    assert.equal(business.searchParams.get('scope'), null);
 
     const tiktok = new URL((await startConnection({ social, workspaceId: workspace.id, connectorId: 'tiktok', env: ENV })).url);
     assert.equal(tiktok.searchParams.get('client_key'), 'tt-key');
