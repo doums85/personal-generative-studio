@@ -1,6 +1,6 @@
 import { loadGatewayCatalog } from '@/lib/gateway/engine.mjs';
 import { createBlobPublisher, fetchBlobUrl, handleMcpRequest } from '@/lib/server/mcp-http.mjs';
-import { getStudioStore } from '@/lib/studio/store.mjs';
+import { getStudioStore } from '@/lib/studio/backend.mjs';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';

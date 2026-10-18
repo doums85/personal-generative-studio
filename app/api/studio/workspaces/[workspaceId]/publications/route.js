@@ -1,6 +1,7 @@
 import { readJsonBody, studioRoute } from '@/lib/server/studio-api';
 import { getSocialStore } from '@/lib/social/store.mjs';
-import { publicPublication, publishGeneration } from '@/lib/social/service.mjs';
+import { publicPublication } from '@/lib/social/service.mjs';
+import { publish } from '@/lib/social/runtime.mjs';
 
 export const dynamic = 'force-dynamic';
 // Instagram and TikTok process media on their side: give the first status checks room to finish.
@@ -13,6 +14,6 @@ export const GET = studioRoute(async ({ request, params, store }) => {
 });
 
 export const POST = studioRoute(async ({ request, params, store }) => {
-  const publications = await publishGeneration({ social: getSocialStore(store), workspaceId: params.workspaceId, input: await readJsonBody(request) });
+  const publications = await publish({ social: getSocialStore(store), workspaceId: params.workspaceId, input: await readJsonBody(request) });
   return Response.json({ publications }, { status: 201 });
 });

@@ -1,5 +1,6 @@
 import { mediaSecret, verifyMediaToken } from '@/lib/studio/public-media.mjs';
-import { StudioStoreError, getStudioStore } from '@/lib/studio/store.mjs';
+import { StudioStoreError } from '@/lib/studio/store.mjs';
+import { getStudioStore } from '@/lib/studio/backend.mjs';
 
 export const dynamic = 'force-dynamic';
 

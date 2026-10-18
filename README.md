@@ -62,7 +62,7 @@ The studio is organised like a production tool:
 - **Gallery**: every generation is stored with its prompt, model, parameters, dialogue, warnings and estimated cost. From a result you can animate an image into a video, make a variation, save it as a reference or turn it into an avatar.
 - **Voix off**: text-to-speech playground; the chosen voice can be saved on an avatar.
 
-Everything lives on disk under `STUDIO_DATA_DIR` (default `./data`, ignored by git): `workspaces.json`, then `workspaces/<id>/elements.json`, `generations.json` and `media/`. Back this folder up to keep your projects; on Vercel the filesystem is ephemeral, so self-host (Docker) or mount persistent storage for a durable library.
+Everything lives in **Convex** (see *Convex* below): workspaces, references, generations, social accounts and publications are Convex documents, and every image, video and voice track is stored in Convex file storage. Without `CONVEX_URL` the studio falls back to the JSON files and media under `STUDIO_DATA_DIR` (default `./data`, ignored by git), which is also what `npm run convex:import` reads to migrate an existing library.
 
 ### Public media links
 
@@ -85,16 +85,69 @@ Setup, once per network:
 3. Set `STUDIO_PUBLIC_URL` (public https address) and `STUDIO_MEDIA_SECRET`: the networks fetch the media from your server through the signed links described above. Images are re-encoded as JPEG on the fly (`?format=jpeg`) because Instagram and TikTok refuse PNG.
 4. Set `SOCIAL_TOKEN_SECRET` (falls back to `AUTH_SECRET`): access and refresh tokens are encrypted with it (AES-256-GCM) before being written next to the workspace, in `social-accounts.json`. Changing the secret makes stored tokens unreadable: reconnect the accounts.
 
-**Scheduling.** In the *Publier* window choose *Programmer* and pick a date and time (your browser's local time; between one minute and one year ahead). Nothing is sent until then: the publication waits as *Programmé* in the history, where it can be cancelled. Two things send it:
+**Scheduling.** In the *Publier* window choose *Programmer* and pick a date and time (your browser's local time; between one minute and one year ahead). Nothing is sent until then: the publication waits as *Programmé* in the history, where it can be cancelled.
 
-- on a **long-running server** (Docker, `npm start`, a VPS) a built-in ticker checks every minute — nothing to configure; set `SOCIAL_SCHEDULER=off` to disable it;
-- on **Vercel** or any serverless host there is no resident process, so set `CRON_SECRET` and have a cron call `GET /api/studio/social/run-due` every minute with `Authorization: Bearer <CRON_SECRET>` (Vercel Cron sends this header itself; a per-minute schedule needs a plan that allows it). The *Réseaux sociaux* screen warns when scheduled posts have no way to leave.
+- **With Convex (recommended)**, Convex sends the post itself, at the exact time, through its own scheduler: no server has to stay up, no cron to configure, and several instances cannot send it twice. It also finishes Reels and TikTok uploads still being processed, so a scheduled post completes with nobody looking. A watchdog (every two minutes) re-launches a post whose send was missed and marks one interrupted mid-way as *Échec* instead of risking a duplicate. Convex needs the publishing settings (app credentials, the key that decrypts the stored tokens, the public address of the studio): run `npm run convex:sync-env` (add `-- --prod` for production) and re-run it whenever they change.
+- **Without Convex** (JSON files), two things send it: on a **long-running server** (Docker, `npm start`, a VPS) a built-in ticker checks every minute — nothing to configure; set `SOCIAL_SCHEDULER=off` to disable it; on **Vercel** or any serverless host there is no resident process, so set `CRON_SECRET` and have a cron call `GET /api/studio/social/run-due` every minute with `Authorization: Bearer <CRON_SECRET>`. This mode assumes a single instance per data directory, and the *Réseaux sociaux* screen warns when scheduled posts have no way to leave.
 
-The same tick also finishes Reels and TikTok uploads still being processed, so a scheduled post completes with nobody looking. The scheduler assumes a single instance: run one server per data directory. If the server was down at the scheduled time, the post goes out as soon as it is back. A scheduled post whose account was disconnected or lost its authorisation is marked *Échec* with the reason rather than silently dropped; it is not retried.
+If the server (or Convex) was down at the scheduled time, the post goes out as soon as it is back. A scheduled post whose account was disconnected or lost its authorisation is marked *Échec* with the reason rather than silently dropped; it is not retried.
 
 Instagram and TikTok process media on their side, so a publication starts as *Traitement…* and the studio follows it until the post is live (or explains why the network refused it). TikTok sessions are renewed automatically; an account whose authorisation was revoked is flagged *À reconnecter*. Publications are kept in `publications.json` of the workspace.
 
 The advanced upstream studios (Layers, Cinema, Clipping, Motion Control, Marketing, Workflows, Agents, Design Agent) remain available from the sidebar and still use the MuAPI key.
+
+## Convex
+
+Convex is the studio's database and file storage. That removes the old limits of local files: the library survives redeploys and serverless hosts (Vercel), nothing depends on one machine's disk, and publishing runs inside Convex: scheduled posts are sent by Convex's own scheduler at the exact time and claimed atomically, so two servers cannot send the same one.
+
+How it is wired:
+
+- `convex/` holds the schema (`schema.ts`) and the functions (`library.ts` for workspaces, references, generations and media, `social.ts` for social accounts and publications, `publishing.ts` for the actions that send posts and follow them until they are live, `crons.ts` for the watchdog). Documents keep the shape they had as JSON, with their original UUID as `uid`, so ids in URLs, `studio://` references and exports stay valid.
+- The web app and the MCP server talk to Convex from the server only. They sign a short-lived RS256 token with `STUDIO_SERVICE_PRIVATE_KEY`; the deployment only accepts tokens matching the public key stored in its `STUDIO_SERVICE_JWKS` variable, and **every** Convex function checks it (`requireOwner`). Without the key nobody can read or write anything, and Convex refuses to deploy these functions until the public key exists. The browser never talks to Convex directly.
+- Social tokens are encrypted by the server (`SOCIAL_TOKEN_SECRET`) before they reach Convex, which stores ciphertext. Since Convex publishes by itself, it also receives that secret (and the Meta/TikTok credentials and `STUDIO_PUBLIC_URL`) as deployment environment variables: `npm run convex:sync-env`.
+- Deleting a project removes it immediately and purges its documents and stored files in the background.
+
+### Local development (no account needed)
+
+```bash
+npm run convex:dev          # starts a local Convex backend and deploys convex/ (writes CONVEX_URL to .env.local)
+npm run convex:setup        # in another terminal: creates the server key (STUDIO_SERVICE_PRIVATE_KEY in .env.local) and registers its public half
+```
+
+Set `CONVEX_AGENT_MODE=anonymous` if the CLI asks you to log in: it runs a local deployment without an account. Then start the app normally; `npm run test:convex` runs the Convex contract tests against a real local backend.
+
+### Production
+
+1. Create a project at convex.dev (or self-host Convex) and deploy: `npx convex deploy` (on Vercel, set the build command to `npx convex deploy --cmd 'npm run build'` and add `CONVEX_DEPLOY_KEY`).
+2. `npm run convex:setup -- --prod` stores the public key in the production deployment and prints `STUDIO_SERVICE_PRIVATE_KEY=…`: add it, with `CONVEX_URL` (the production deployment URL), to your host's environment.
+   Then `npm run convex:sync-env -- --prod` sends the publishing settings to Convex (see *Scheduling*).
+3. Keep `SOCIAL_TOKEN_SECRET` (or `AUTH_SECRET`) unchanged from the one used before if you migrate social accounts.
+
+### Sign-in with Convex
+
+By default the owner signs in with the password hashed in `AUTH_PASSWORD_HASH` (NextAuth). Setting `LOGIN_PROVIDER=convex` moves the sign-in to Convex as well: the account, the password hash (Scrypt), the sessions and the limit on failed attempts live in the deployment (Convex Auth), so the password can be changed without redeploying, a stolen session can be ended, and no hash sits in the host's environment. The old login stays the default until you switch, so you can check the new one first.
+
+```bash
+npm run convex:auth-setup          # creates Convex's session keys and tells it your address (ALLOWED_EMAILS) and site (STUDIO_PUBLIC_URL)
+npm run convex:create-owner        # creates your account: asks for a password (12 characters minimum), or add --generate
+# then set LOGIN_PROVIDER=convex on the web app and restart it
+```
+
+For production add `-- --prod` to the first command and run the second with the production `CONVEX_URL` and key. Running `convex:create-owner` again changes the password and signs every device out.
+
+- Nobody can create an account: the only flow Convex accepts is *sign in*, and only for the addresses in `ALLOWED_EMAILS` (which Convex needs as its own variable — `convex:auth-setup` copies it). Wrong password, unknown address and foreign address all get the same answer, and Convex locks an address after repeated failures.
+- The browser never talks to Convex and never sees a token: the login form posts to this site's `/api/auth`, which relays to Convex and keeps the session in `httpOnly` cookies (30 days, renewed while you use the studio). The **Se déconnecter** button in the header (it works with both login systems) ends the session; with Convex it calls `/api/auth` (`{"action":"auth:signOut","args":{}}`), and a copied cookie stops working within 30 seconds.
+- A Convex session only opens the web app. It cannot call the studio's Convex functions, which still require the servers' own key.
+- Going back is a one-line change: unset `LOGIN_PROVIDER` (keep `AUTH_PASSWORD_HASH` until you are sure).
+
+### Migrating an existing library
+
+```bash
+npm run convex:import -- --dry-run   # what would be copied
+npm run convex:import                # copies STUDIO_DATA_DIR into Convex (ids, dates, media and encrypted tokens kept)
+```
+
+The import can be re-run: what is already in Convex is skipped. Check the result in the app, then archive the old `data` directory.
 
 ## Claude Code and other MCP clients
 
@@ -113,7 +166,7 @@ Configuration:
 - `AI_GATEWAY_API_KEY` is read from the environment, then from this repository's `.env.local`.
 - `MAX_GENERATION_COST_USD` rejects any generation whose estimated cost exceeds the limit.
 - `STUDIO_OUTPUT_DIR` (or the `outputDir` tool argument) chooses where files are written; the default is `./generated-media` in the client's working directory.
-- `STUDIO_DATA_DIR` points to the studio library shared with the web app (default `./data` in this repository).
+- The studio library is shared with the web app: with Convex (`CONVEX_URL` and `STUDIO_SERVICE_PRIVATE_KEY` in `.env.local` or the environment) both read the same deployment; otherwise `STUDIO_DATA_DIR` points to the shared files (default `./data` in this repository).
 
 Each generation writes the media files plus a JSON manifest (prompt, model, estimate, warnings) next to them, so a project keeps its own history of generated assets.
 
@@ -125,7 +178,7 @@ Four more tools let an agent post what it generates to the accounts connected to
 - It posts publicly and cannot be undone from the tool, so its description tells the model to publish only on explicit request and to run it with `dryRun: true` first (reports format and caption problems per account without importing or sending anything).
 - Instagram and TikTok finish processing on their side; the result then says *processing* and `list_publications` checks with the platform and reports the final state or link.
 
-Requirements: the MCP server must see the same `STUDIO_DATA_DIR` as the web app (that is where the accounts live), plus `SOCIAL_TOKEN_SECRET`/`AUTH_SECRET` to decrypt the tokens and `STUDIO_PUBLIC_URL`/`STUDIO_MEDIA_SECRET`; the web app must be reachable at that public address because the networks download the media from it. The hosted endpoint on Vercel has an ephemeral filesystem, so use the standalone server (`npm run mcp:http`/Docker) with a volume shared with the web app, or stdio locally.
+Requirements: the MCP server must see the same library as the web app (that is where the accounts live): the same Convex deployment (`CONVEX_URL`, `STUDIO_SERVICE_PRIVATE_KEY`), or the same `STUDIO_DATA_DIR` without Convex. It also needs `SOCIAL_TOKEN_SECRET`/`AUTH_SECRET` to decrypt the tokens and `STUDIO_PUBLIC_URL`/`STUDIO_MEDIA_SECRET`; the web app must be reachable at that public address because the networks download the media from it. With Convex the hosted endpoint on Vercel works too, since the library no longer lives on the function's disk.
 
 Security: on the hosted endpoint, anyone holding `MCP_AUTH_TOKEN` can now publish to the connected accounts as well as spend Gateway credits. Keep the token secret and rotate it if it leaks. `url` imports only accept links issued by this studio (files of the standalone server, or Vercel Blob's public domain), never arbitrary addresses.
 
@@ -149,7 +202,7 @@ claude mcp add --transport http studio https://<your-project>.vercel.app/api/mcp
 
 For claude.ai (Settings → Connectors → Add custom connector), which cannot send a custom header, put the token in the URL: `https://<your-project>.vercel.app/api/mcp/<MCP_AUTH_TOKEN>`. Treat that URL as a secret.
 
-The studio library (workspaces and elements) lives on the function's ephemeral disk on Vercel, so `list_workspaces`, `list_elements` and the `elements` argument only see data that exists there. Use the Docker option below if you need a persistent library. Long video generations need a plan that allows 300 s functions.
+With `CONVEX_URL` and `STUDIO_SERVICE_PRIVATE_KEY` set (see *Convex*), the studio library is shared with the web app, so `list_workspaces`, `list_elements` and the `elements` argument see your real projects. Without Convex the library is the function's ephemeral disk and only sees data that exists there. Long video generations need a plan that allows 300 s functions.
 
 #### On a Node host with a disk (Docker, Fly, Railway…)
 
@@ -183,7 +236,7 @@ Variables of the standalone server: `MCP_AUTH_TOKEN` (required, 24+ characters),
 
 Deploy the Next.js application to Vercel, configure the environment variables above, and enable AI Gateway for the linked project. Long video generations use a five-minute function duration and therefore require a compatible Vercel plan and model. Set `STUDIO_PUBLIC_URL` to the deployment address so URL-only video models can fetch reference images and voice tracks.
 
-The studio library (`STUDIO_DATA_DIR`) is written to the local filesystem. On Vercel this storage is ephemeral: use the Docker image or another host with a persistent volume for a durable library, or mount the data directory on shared storage. Private Blob storage and a Postgres database remain the future option for multi-region deployments.
+The studio library lives in Convex (see *Convex*): set `CONVEX_URL` and `STUDIO_SERVICE_PRIVATE_KEY` on the host, and deploy the Convex functions with `npx convex deploy`. Without Convex the library is written to the local filesystem (`STUDIO_DATA_DIR`), which is ephemeral on Vercel: use the Docker image with a persistent volume in that case.
 
 ## Migration status
 

@@ -1,13 +1,15 @@
 import { cronAuthorized } from '@/lib/social/schedule.mjs';
 import { runDuePublications } from '@/lib/social/service.mjs';
 import { getSocialStore } from '@/lib/social/store.mjs';
-import { getStudioStore } from '@/lib/studio/store.mjs';
+import { getStudioStore } from '@/lib/studio/backend.mjs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /** Cron entry point (Vercel Cron or any scheduler): sends the publications that are due. Authenticated by CRON_SECRET, not by a session. */
 async function run(request) {
+  // On Convex its own scheduler sends the posts; running them here too would send them twice.
+  if (getStudioStore().backend === 'convex') return Response.json({ handled: 0, mode: 'convex' });
   if (!process.env.CRON_SECRET) return Response.json({ error: 'CRON_SECRET is not set', code: 'not_configured' }, { status: 503 });
   if (!cronAuthorized(request.headers.get('authorization'))) return Response.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
   const touched = await runDuePublications({ social: getSocialStore(getStudioStore()) });
