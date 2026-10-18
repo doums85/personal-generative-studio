@@ -1,3 +1,4 @@
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -14,6 +15,8 @@ const mediaRef = v.object({
 });
 
 export default defineSchema({
+  // Accounts, sessions and sign-in attempts of Convex Auth (see auth.ts).
+  ...authTables,
   workspaces: defineTable({
     uid: v.string(),
     name: v.string(),

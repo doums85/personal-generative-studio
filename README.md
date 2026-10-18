@@ -123,6 +123,23 @@ Set `CONVEX_AGENT_MODE=anonymous` if the CLI asks you to log in: it runs a local
    Then `npm run convex:sync-env -- --prod` sends the publishing settings to Convex (see *Scheduling*).
 3. Keep `SOCIAL_TOKEN_SECRET` (or `AUTH_SECRET`) unchanged from the one used before if you migrate social accounts.
 
+### Sign-in with Convex
+
+By default the owner signs in with the password hashed in `AUTH_PASSWORD_HASH` (NextAuth). Setting `LOGIN_PROVIDER=convex` moves the sign-in to Convex as well: the account, the password hash (Scrypt), the sessions and the limit on failed attempts live in the deployment (Convex Auth), so the password can be changed without redeploying, a stolen session can be ended, and no hash sits in the host's environment. The old login stays the default until you switch, so you can check the new one first.
+
+```bash
+npm run convex:auth-setup          # creates Convex's session keys and tells it your address (ALLOWED_EMAILS) and site (STUDIO_PUBLIC_URL)
+npm run convex:create-owner        # creates your account: asks for a password (12 characters minimum), or add --generate
+# then set LOGIN_PROVIDER=convex on the web app and restart it
+```
+
+For production add `-- --prod` to the first command and run the second with the production `CONVEX_URL` and key. Running `convex:create-owner` again changes the password and signs every device out.
+
+- Nobody can create an account: the only flow Convex accepts is *sign in*, and only for the addresses in `ALLOWED_EMAILS` (which Convex needs as its own variable — `convex:auth-setup` copies it). Wrong password, unknown address and foreign address all get the same answer, and Convex locks an address after repeated failures.
+- The browser never talks to Convex and never sees a token: the login form posts to this site's `/api/auth`, which relays to Convex and keeps the session in `httpOnly` cookies (30 days, renewed while you use the studio). The **Se déconnecter** button in the header (it works with both login systems) ends the session; with Convex it calls `/api/auth` (`{"action":"auth:signOut","args":{}}`), and a copied cookie stops working within 30 seconds.
+- A Convex session only opens the web app. It cannot call the studio's Convex functions, which still require the servers' own key.
+- Going back is a one-line change: unset `LOGIN_PROVIDER` (keep `AUTH_PASSWORD_HASH` until you are sure).
+
 ### Migrating an existing library
 
 ```bash
