@@ -20,7 +20,7 @@ test('the token issuer and audience the servers sign are the ones the Convex fun
 });
 
 test('every public Convex function starts by checking the owner', () => {
-  const modules = { library: 10, social: 10, publishing: 1 };
+  const modules = { library: 10, social: 10, publishing: 1, authAdmin: 1 };
   for (const [file, minimum] of Object.entries(modules)) {
     const source = readFileSync(new URL(`../../convex/${file}.ts`, import.meta.url), 'utf8');
     const registrations = [...source.matchAll(/export const (\w+) = (query|mutation|action)\(/g)].map((match) => match[1]);
@@ -77,4 +77,16 @@ test('the studio picks Convex when configured and the files otherwise, and the s
   assert.equal(convex.backend, 'convex');
   assert.ok(getSocialStore(convex) instanceof ConvexSocialStore);
   assert.equal(getSocialStore(convex), getSocialStore(convex), 'one social store per library');
+});
+
+test('the visitor-facing Convex code stays minimal: one query, tokens checked by issuer, no sign-up', () => {
+  const read = (file) => readFileSync(new URL(`../../convex/${file}.ts`, import.meta.url), 'utf8');
+  const session = read('session');
+  assert.equal([...session.matchAll(/= (query|mutation|action)\(/g)].length, 1, 'session.ts exposes only the viewer query');
+  assert.ok(session.includes('identity.issuer !== process.env.CONVEX_SITE_URL'), 'only Convex Auth tokens are answered');
+  const auth = read('auth');
+  assert.ok(!/= (query|mutation|action)\(/.test(auth));
+  assert.ok(auth.includes('params.flow !== "signIn"') && auth.includes('isAllowedEmail(email)'), 'only sign-in, only for allowed addresses');
+  const config = read('auth.config');
+  assert.ok(config.includes('applicationID: "convex"') && config.includes('SERVICE_ISSUER'), 'both Convex Auth and the studio servers are accepted, nothing else');
 });

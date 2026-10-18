@@ -16,6 +16,12 @@ export const CONVEX_PLATFORM_ENV = {
   TIKTOK_API_BASE_URL: FAKE_URL,
 };
 
+/** What Convex needs to sign the owner in during the tests (see scripts/test-convex.mjs). */
+export const CONVEX_AUTH_ENV = {
+  ALLOWED_EMAILS: 'owner@example.com',
+  STUDIO_PUBLIC_URL: FAKE_URL,
+};
+
 /** A minimal Meta Graph API: records every call; Reels need `reelPolls` status checks before they are ready. */
 export async function startFakePlatform({ reelPolls = 2 } = {}) {
   const calls = [];

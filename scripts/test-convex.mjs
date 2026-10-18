@@ -6,7 +6,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { loadLocalEnv } from '../mcp/server.mjs';
-import { CONVEX_PLATFORM_ENV } from '../tests/convex/fake-platform.mjs';
+import { CONVEX_AUTH_ENV, CONVEX_PLATFORM_ENV } from '../tests/convex/fake-platform.mjs';
 
 const env = { ...process.env, CONVEX_AGENT_MODE: 'anonymous' };
 loadLocalEnv(process.cwd(), env);
@@ -58,6 +58,10 @@ for (const [name, value] of Object.entries(CONVEX_PLATFORM_ENV)) {
   const result = spawnSync('npx', ['convex', 'env', 'set', name, value], { env, stdio: ['ignore', 'ignore', 'inherit'] });
   if (result.status !== 0) { stop(); process.exit(result.status || 1); }
 }
+
+// Convex signs the owner in with its own keys: create them, and allow the address the tests use.
+const authSetup = spawnSync('node', ['scripts/convex-auth-setup.mjs'], { env: { ...env, ...CONVEX_AUTH_ENV }, stdio: ['ignore', 'ignore', 'inherit'] });
+if (authSetup.status !== 0) { stop(); process.exit(authSetup.status || 1); }
 
 const tests = spawnSync('node', ['--test', '--test-concurrency=1', 'tests/convex/*.test.mjs'], { env, stdio: 'inherit' });
 stop();

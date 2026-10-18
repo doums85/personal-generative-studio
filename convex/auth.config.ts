@@ -9,6 +9,8 @@ const jwks = process.env.STUDIO_SERVICE_JWKS as string;
 
 export default {
   providers: [
+    // Tokens issued by Convex Auth when the owner signs in (see auth.ts).
+    { domain: process.env.CONVEX_SITE_URL, applicationID: "convex" },
     {
       type: "customJwt" as const,
       applicationID: SERVICE_AUDIENCE,
