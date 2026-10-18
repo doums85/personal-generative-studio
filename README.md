@@ -136,7 +136,7 @@ npm run convex:create-owner        # creates your account: asks for a password (
 For production add `-- --prod` to the first command and run the second with the production `CONVEX_URL` and key. Running `convex:create-owner` again changes the password and signs every device out.
 
 - Nobody can create an account: the only flow Convex accepts is *sign in*, and only for the addresses in `ALLOWED_EMAILS` (which Convex needs as its own variable — `convex:auth-setup` copies it). Wrong password, unknown address and foreign address all get the same answer, and Convex locks an address after repeated failures.
-- The browser never talks to Convex and never sees a token: the login form posts to this site's `/api/auth`, which relays to Convex and keeps the session in `httpOnly` cookies (30 days, renewed while you use the studio). Signing out (`POST /api/auth` with `{"action":"auth:signOut","args":{}}`) ends the session within 30 seconds, even for a copied cookie.
+- The browser never talks to Convex and never sees a token: the login form posts to this site's `/api/auth`, which relays to Convex and keeps the session in `httpOnly` cookies (30 days, renewed while you use the studio). The **Se déconnecter** button in the header (it works with both login systems) ends the session; with Convex it calls `/api/auth` (`{"action":"auth:signOut","args":{}}`), and a copied cookie stops working within 30 seconds.
 - A Convex session only opens the web app. It cannot call the studio's Convex functions, which still require the servers' own key.
 - Going back is a one-line change: unset `LOGIN_PROVIDER` (keep `AUTH_PASSWORD_HASH` until you are sure).
 

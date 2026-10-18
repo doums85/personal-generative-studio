@@ -36,7 +36,9 @@
     "dropHere": "将媒体文件拖放到此处",
     "dropHereHint": "图片、视频或音频文件",
     "vadooPromo": "无限制 AI 图像与视频 → 自动发布为 YouTube Shorts 和 TikTok，赚取收益 ↗",
-    "dismiss": "关闭"
+    "dismiss": "关闭",
+    "signOut": "退出登录",
+    "signingOut": "正在退出…"
   },
   "settingsModal": {
     "title": "设置",

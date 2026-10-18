@@ -15,7 +15,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint auth.js proxy.js app/login app/api/gateway app/api/studio app/api/auth components/StandaloneShell.js components/ConvexLoginForm.js components/studio lib/access-control.mjs lib/login-action.mjs lib/login-redirect.mjs lib/password.mjs scripts/hash-password.mjs lib/studio lib/social lib/convex lib/gateway lib/server scripts/convex-setup.mjs scripts/convex-import.mjs scripts/convex-sync-env.mjs scripts/convex-auth-setup.mjs scripts/convex-create-owner.mjs scripts/test-convex.mjs tests/personal-studio tests/convex mcp",
+    "lint": "eslint auth.js proxy.js app/login app/api/gateway app/api/studio app/api/auth components/StandaloneShell.js components/ConvexLoginForm.js components/SignOutButton.js components/studio lib/access-control.mjs lib/login-action.mjs lib/login-redirect.mjs lib/password.mjs scripts/hash-password.mjs lib/studio lib/social lib/convex lib/gateway lib/server scripts/convex-setup.mjs scripts/convex-import.mjs scripts/convex-sync-env.mjs scripts/convex-auth-setup.mjs scripts/convex-create-owner.mjs scripts/test-convex.mjs tests/personal-studio tests/convex mcp",
     "test": "node --test tests/personal-studio/*.test.mjs",
     "test:convex": "node scripts/test-convex.mjs",
     "convex:dev": "convex dev",

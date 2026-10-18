@@ -9,6 +9,7 @@ const DesignAgentStudio = dynamic(() => import('studio').then(mod => mod.DesignA
   ssr: false,
   loading: () => <div className="h-full w-full bg-black flex items-center justify-center text-white/20">Loading Design Studio...</div>
 });
+import SignOutButton from '@/components/SignOutButton';
 import { getCommonCopy, getLocaleConfig, localizeStudioPath } from '@/lib/locales';
 
 // Tab/category ids, icons, and English `label` fallbacks are stable
@@ -782,6 +783,8 @@ export default function StandaloneShell({ locale = 'en' }) {
               </svg>
               <span className="hidden sm:inline">{copy.shell.settings}</span>
             </button>
+
+            <SignOutButton label={copy.shell.signOut} busyLabel={copy.shell.signingOut} />
           </div>
         </header>
       )}

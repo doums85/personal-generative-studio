@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { StudioProvider, useStudio } from './StudioProvider';
+import SignOutButton from '@/components/SignOutButton';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import HomeView from './HomeView';
 import CreateView from './CreateView';
@@ -162,6 +163,7 @@ function Frame({ view }) {
             <span className={cx('h-2 w-2 rounded-full', catalogError ? 'bg-red-400' : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]')} />
             {catalogError ? 'Gateway hors ligne' : 'AI Gateway connecté'}
           </div>
+          <SignOutButton />
         </header>
         <main className="custom-scrollbar relative min-h-0 flex-1 overflow-y-auto">{content}</main>
       </div>
