@@ -20,15 +20,24 @@ test('the token issuer and audience the servers sign are the ones the Convex fun
 });
 
 test('every public Convex function starts by checking the owner', () => {
-  for (const file of ['library', 'social']) {
+  const modules = { library: 10, social: 10, publishing: 1 };
+  for (const [file, minimum] of Object.entries(modules)) {
     const source = readFileSync(new URL(`../../convex/${file}.ts`, import.meta.url), 'utf8');
-    const registrations = [...source.matchAll(/export const (\w+) = (query|mutation)\(/g)].map((match) => match[1]);
-    assert.ok(registrations.length > 5, `${file}.ts exposes functions`);
+    const registrations = [...source.matchAll(/export const (\w+) = (query|mutation|action)\(/g)].map((match) => match[1]);
+    assert.ok(registrations.length >= minimum, `${file}.ts exposes its public functions`);
     for (const name of registrations) {
       const body = source.slice(source.indexOf(`export const ${name} =`));
       const handler = body.slice(0, body.search(/\n}\);\n/) + 4);
       assert.ok(handler.includes('await requireOwner(ctx)'), `${file}.${name} must call requireOwner(ctx)`);
     }
+  }
+});
+
+test('internal Convex functions are never registered as public ones', () => {
+  for (const file of ['socialInternal', 'libraryInternal']) {
+    const source = readFileSync(new URL(`../../convex/${file}.ts`, import.meta.url), 'utf8');
+    assert.ok(!/= (query|mutation|action)\(/.test(source), `${file}.ts must only register internal functions`);
+    assert.ok(/= internal(Query|Mutation)\(/.test(source));
   }
 });
 

@@ -6,7 +6,7 @@ import { SocialError } from '../lib/social/errors.mjs';
 import { PLATFORM_LABELS } from '../lib/social/platforms.mjs';
 import { checkPublishable, mediaKindOf } from '../lib/social/rules.mjs';
 import { publicMediaConfig } from '../lib/studio/public-media.mjs';
-import { publishGeneration, refreshPublication } from '../lib/social/service.mjs';
+import { follow, publish } from '../lib/social/runtime.mjs';
 
 const MAX_IMPORT_BYTES = 150 * 1024 * 1024;
 
@@ -175,7 +175,7 @@ export function registerSocialTools(server, { store, social, env, fetch: fetchIm
         source.fileId = generation.files[0].id;
       }
 
-      const publications = await publishGeneration({
+      const publications = await publish({
         social,
         workspaceId: workspace.id,
         env,
@@ -216,7 +216,7 @@ export function registerSocialTools(server, { store, social, env, fetch: fetchIm
       const publications = [];
       for (const item of listed) {
         publications.push(item.status === 'processing'
-          ? await refreshPublication({ social, workspaceId: workspace.id, publicationId: item.id, env, fetch: fetchImpl, now: () => now().getTime() })
+          ? await follow({ social, workspaceId: workspace.id, publicationId: item.id, env, fetch: fetchImpl, now: () => now().getTime() })
           : { ...item, media: undefined, state: undefined });
       }
       const text = publications.length ? `Workspace "${workspace.name}"\n${publications.map((item) => describePublication(item)).join('\n')}` : `Workspace "${workspace.name}" has no publication yet.`;

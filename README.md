@@ -85,12 +85,12 @@ Setup, once per network:
 3. Set `STUDIO_PUBLIC_URL` (public https address) and `STUDIO_MEDIA_SECRET`: the networks fetch the media from your server through the signed links described above. Images are re-encoded as JPEG on the fly (`?format=jpeg`) because Instagram and TikTok refuse PNG.
 4. Set `SOCIAL_TOKEN_SECRET` (falls back to `AUTH_SECRET`): access and refresh tokens are encrypted with it (AES-256-GCM) before being written next to the workspace, in `social-accounts.json`. Changing the secret makes stored tokens unreadable: reconnect the accounts.
 
-**Scheduling.** In the *Publier* window choose *Programmer* and pick a date and time (your browser's local time; between one minute and one year ahead). Nothing is sent until then: the publication waits as *Programmé* in the history, where it can be cancelled. Two things send it:
+**Scheduling.** In the *Publier* window choose *Programmer* and pick a date and time (your browser's local time; between one minute and one year ahead). Nothing is sent until then: the publication waits as *Programmé* in the history, where it can be cancelled.
 
-- on a **long-running server** (Docker, `npm start`, a VPS) a built-in ticker checks every minute — nothing to configure; set `SOCIAL_SCHEDULER=off` to disable it;
-- on **Vercel** or any serverless host there is no resident process, so set `CRON_SECRET` and have a cron call `GET /api/studio/social/run-due` every minute with `Authorization: Bearer <CRON_SECRET>` (Vercel Cron sends this header itself; a per-minute schedule needs a plan that allows it). The *Réseaux sociaux* screen warns when scheduled posts have no way to leave.
+- **With Convex (recommended)**, Convex sends the post itself, at the exact time, through its own scheduler: no server has to stay up, no cron to configure, and several instances cannot send it twice. It also finishes Reels and TikTok uploads still being processed, so a scheduled post completes with nobody looking. A watchdog (every two minutes) re-launches a post whose send was missed and marks one interrupted mid-way as *Échec* instead of risking a duplicate. Convex needs the publishing settings (app credentials, the key that decrypts the stored tokens, the public address of the studio): run `npm run convex:sync-env` (add `-- --prod` for production) and re-run it whenever they change.
+- **Without Convex** (JSON files), two things send it: on a **long-running server** (Docker, `npm start`, a VPS) a built-in ticker checks every minute — nothing to configure; set `SOCIAL_SCHEDULER=off` to disable it; on **Vercel** or any serverless host there is no resident process, so set `CRON_SECRET` and have a cron call `GET /api/studio/social/run-due` every minute with `Authorization: Bearer <CRON_SECRET>`. This mode assumes a single instance per data directory, and the *Réseaux sociaux* screen warns when scheduled posts have no way to leave.
 
-The same tick also finishes Reels and TikTok uploads still being processed, so a scheduled post completes with nobody looking. The scheduler assumes a single instance: run one server per data directory. If the server was down at the scheduled time, the post goes out as soon as it is back. A scheduled post whose account was disconnected or lost its authorisation is marked *Échec* with the reason rather than silently dropped; it is not retried.
+If the server (or Convex) was down at the scheduled time, the post goes out as soon as it is back. A scheduled post whose account was disconnected or lost its authorisation is marked *Échec* with the reason rather than silently dropped; it is not retried.
 
 Instagram and TikTok process media on their side, so a publication starts as *Traitement…* and the studio follows it until the post is live (or explains why the network refused it). TikTok sessions are renewed automatically; an account whose authorisation was revoked is flagged *À reconnecter*. Publications are kept in `publications.json` of the workspace.
 
@@ -98,13 +98,13 @@ The advanced upstream studios (Layers, Cinema, Clipping, Motion Control, Marketi
 
 ## Convex
 
-Convex is the studio's database and file storage. That removes the old limits of local files: the library survives redeploys and serverless hosts (Vercel), nothing depends on one machine's disk, and scheduled posts are claimed atomically so two servers cannot send the same one.
+Convex is the studio's database and file storage. That removes the old limits of local files: the library survives redeploys and serverless hosts (Vercel), nothing depends on one machine's disk, and publishing runs inside Convex: scheduled posts are sent by Convex's own scheduler at the exact time and claimed atomically, so two servers cannot send the same one.
 
 How it is wired:
 
-- `convex/` holds the schema (`schema.ts`) and the functions (`library.ts` for workspaces, references, generations and media, `social.ts` for social accounts and publications). Documents keep the shape they had as JSON, with their original UUID as `uid`, so ids in URLs, `studio://` references and exports stay valid.
+- `convex/` holds the schema (`schema.ts`) and the functions (`library.ts` for workspaces, references, generations and media, `social.ts` for social accounts and publications, `publishing.ts` for the actions that send posts and follow them until they are live, `crons.ts` for the watchdog). Documents keep the shape they had as JSON, with their original UUID as `uid`, so ids in URLs, `studio://` references and exports stay valid.
 - The web app and the MCP server talk to Convex from the server only. They sign a short-lived RS256 token with `STUDIO_SERVICE_PRIVATE_KEY`; the deployment only accepts tokens matching the public key stored in its `STUDIO_SERVICE_JWKS` variable, and **every** Convex function checks it (`requireOwner`). Without the key nobody can read or write anything, and Convex refuses to deploy these functions until the public key exists. The browser never talks to Convex directly.
-- Social tokens are still encrypted by the server (`SOCIAL_TOKEN_SECRET`) before they reach Convex, which only stores ciphertext.
+- Social tokens are encrypted by the server (`SOCIAL_TOKEN_SECRET`) before they reach Convex, which stores ciphertext. Since Convex publishes by itself, it also receives that secret (and the Meta/TikTok credentials and `STUDIO_PUBLIC_URL`) as deployment environment variables: `npm run convex:sync-env`.
 - Deleting a project removes it immediately and purges its documents and stored files in the background.
 
 ### Local development (no account needed)
@@ -120,6 +120,7 @@ Set `CONVEX_AGENT_MODE=anonymous` if the CLI asks you to log in: it runs a local
 
 1. Create a project at convex.dev (or self-host Convex) and deploy: `npx convex deploy` (on Vercel, set the build command to `npx convex deploy --cmd 'npm run build'` and add `CONVEX_DEPLOY_KEY`).
 2. `npm run convex:setup -- --prod` stores the public key in the production deployment and prints `STUDIO_SERVICE_PRIVATE_KEY=…`: add it, with `CONVEX_URL` (the production deployment URL), to your host's environment.
+   Then `npm run convex:sync-env -- --prod` sends the publishing settings to Convex (see *Scheduling*).
 3. Keep `SOCIAL_TOKEN_SECRET` (or `AUTH_SECRET`) unchanged from the one used before if you migrate social accounts.
 
 ### Migrating an existing library

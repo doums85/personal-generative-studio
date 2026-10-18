@@ -3,6 +3,8 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { StudioError, requireOwner } from "./lib/owner";
+import { cancelSchedule } from "./lib/socialDb";
+import { elementView, generationView, summaryView, workspaceView } from "./lib/views";
 
 /** Most rows any listing returns; keeps every query inside Convex's read limits. */
 const MAX_LIST = 500;
@@ -19,26 +21,6 @@ const imageRef = v.object({
 });
 const fileRef = v.object({ id: v.string(), file: v.string(), mediaType: v.string(), bytes: v.number(), role: v.string() });
 const modelRef = v.union(v.null(), v.object({ id: v.string(), name: v.optional(v.string()), provider: v.optional(v.string()) }));
-
-// ------------------------------------------------------------------ public shapes
-
-function workspaceView(doc: Doc<"workspaces">) {
-  return { id: doc.uid, name: doc.name, description: doc.description, settings: doc.settings, createdAt: doc.createdAt, updatedAt: doc.updatedAt };
-}
-
-function summaryView(doc: Doc<"workspaces">) {
-  return { ...workspaceView(doc), counts: doc.counts, spentUsd: doc.spentUsd };
-}
-
-function elementView(doc: Doc<"elements">) {
-  const { _id, _creationTime, uid, workspaceUid, ...rest } = doc; // eslint-disable-line @typescript-eslint/no-unused-vars
-  return { id: uid, ...rest };
-}
-
-function generationView(doc: Doc<"generations">) {
-  const { _id, _creationTime, uid, workspaceUid, ...rest } = doc; // eslint-disable-line @typescript-eslint/no-unused-vars
-  return { id: uid, ...rest };
-}
 
 // ------------------------------------------------------------------ lookups
 
@@ -157,7 +139,10 @@ export const purgeWorkspace = internalMutation({
     const accounts = await ctx.db.query("socialAccounts").withIndex("by_workspaceUid_and_platform_and_externalId", (q) => q.eq("workspaceUid", uid)).take(PURGE_BATCH);
     for (const row of accounts) await ctx.db.delete(row._id);
     const publications = await ctx.db.query("publications").withIndex("by_workspaceUid_and_createdAt", (q) => q.eq("workspaceUid", uid)).take(PURGE_BATCH);
-    for (const row of publications) await ctx.db.delete(row._id);
+    for (const row of publications) {
+      await cancelSchedule(ctx, row);
+      await ctx.db.delete(row._id);
+    }
     more = [elements, generations, files, accounts, publications].some((rows) => rows.length === PURGE_BATCH);
     if (more) await ctx.scheduler.runAfter(0, internal.library.purgeWorkspace, { uid });
     return null;

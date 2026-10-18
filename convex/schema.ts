@@ -111,6 +111,8 @@ export default defineSchema({
     draft: v.boolean(),
     error: v.union(v.null(), v.string()),
     scheduledAt: v.optional(v.string()),
+    // The Convex scheduled function that will send it; cancelled when the publication is deleted.
+    scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
     startedAt: v.union(v.null(), v.string()),
     createdAt: v.string(),
     updatedAt: v.string(),
@@ -118,5 +120,8 @@ export default defineSchema({
   })
     .index("by_uid", ["uid"])
     .index("by_workspaceUid_and_createdAt", ["workspaceUid", "createdAt"])
-    .index("by_workspaceUid_and_generationId_and_createdAt", ["workspaceUid", "generationId", "createdAt"]),
+    .index("by_workspaceUid_and_generationId_and_createdAt", ["workspaceUid", "generationId", "createdAt"])
+    // The watchdog looks for scheduled posts that missed their time and processing posts nobody is following.
+    .index("by_status_and_scheduledAt", ["status", "scheduledAt"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 });
