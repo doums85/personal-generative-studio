@@ -19,12 +19,13 @@ const rotate = process.argv.includes('--rotate');
 const env = loadLocalEnv(process.cwd(), { ...process.env });
 const target = production ? ['--prod'] : [];
 
-function convexEnv(args) {
-  return spawnSync('npx', ['convex', 'env', ...args, ...target], { encoding: 'utf8', env: { ...process.env, ...(production ? {} : { CONVEX_AGENT_MODE: process.env.CONVEX_AGENT_MODE }) } });
+function convexEnv(args, input) {
+  return spawnSync('npx', ['convex', 'env', ...args, ...target], { encoding: 'utf8', input, env: { ...process.env, ...(production ? {} : { CONVEX_AGENT_MODE: process.env.CONVEX_AGENT_MODE }) } });
 }
 
+// The value goes through stdin: a key starting with "-----BEGIN" would be read as an option, and recent CLIs reject `--`.
 function setVariable(name, value) {
-  const result = convexEnv(['set', name, '--', value]);
+  const result = convexEnv(['set', name], value);
   if (result.status !== 0) {
     console.error(`Convex a refusé ${name} : ${result.stderr || result.stdout}\nLe déploiement existe-t-il ? (lancez d'abord \`npx convex dev\` ou \`npx convex login\`)`);
     process.exit(result.status || 1);
